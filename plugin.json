@@ -28,5 +28,5 @@
   "screenshots": [],
   "summary": "在 Apple 芯片上跑 Windows 与 Linux 桌面虚拟机，共享目录、剪贴板、窗口自适应分辨率。",
   "uuid": "otools-vm",
-  "version": "0.1.1"
+  "version": "0.1.2"
 }

@@ -17,7 +17,7 @@ use block2::RcBlock;
 use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
 use objc2::{AnyThread, MainThreadMarker};
-use objc2_app_kit::{NSView, NSWindow};
+use objc2_app_kit::NSWindow;
 use objc2_foundation::NSError;
 use objc2_virtualization::{
     VZVirtualMachine, VZVirtualMachineConfiguration, VZVirtualMachineState, VZVirtualMachineView,
@@ -386,14 +386,9 @@ fn resize_view(instance: &mut VzInstance, rect: ViewRect) -> Result<(), String> 
     if instance.window.is_some() {
         return Ok(());
     }
-    let parent: Option<Retained<NSView>> = unsafe { created.superview() };
-    match parent {
-        Some(parent) => {
-            view::resize(created, &parent, rect);
-            Ok(())
-        }
-        None => Ok(()),
-    }
+    // 内嵌模式：按前端矩形重新定位。坐标换算（含与宿主 chrome 的对齐）在 view 层做。
+    view::resize(created, rect);
+    Ok(())
 }
 
 /// 按需创建 machine（不启动）。视图可以在启动前就挂上去，用户先看到「等待启动」。

@@ -46,12 +46,57 @@ fn host_content_view() -> Option<Retained<NSView>> {
     None
 }
 
-/// 把 CSS 矩形换算成父视图坐标系里的 frame。
-fn to_view_frame(parent: &NSView, rect: ViewRect) -> NSRect {
-    let parent_height = parent.bounds().size.height;
-    let y = parent_height - rect.y - rect.height;
+/// 递归找窗口里的 WKWebView（宿主真正画 UI、挖出舞台孔洞的视图）。
+///
+/// 之所以不能直接贴 contentView 定位：宿主窗口顶部通常有原生 chrome /
+/// webview 在 contentView 里有 inset，DOM 的 `getBoundingClientRect` 是以
+/// webview 视口左上为原点的，只有锚到 webview 自身才能对齐（否则原生视图
+/// 会被多翻一段、顶上去盖住上方按钮和文案）。找不到时返回 None，调用方回退。
+fn find_webview(node: &NSView, depth: u32) -> Option<Retained<NSView>> {
+    if depth > 12 {
+        return None;
+    }
+    if is_webview_class(node) {
+        // 节点归其父视图所有（attach 期间一定活着），这里 retain 一份独立引用带出递归。
+        return unsafe { Retained::retain(node as *const NSView as *mut NSView) };
+    }
+    for child in node.subviews().iter() {
+        if let Some(found) = find_webview(&child, depth + 1) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn is_webview_class(view: &NSView) -> bool {
+    view.class()
+        .name()
+        .to_string_lossy()
+        .contains("WebView")
+}
+
+/// 把前端报来的 CSS 矩形换算成宿主窗口里 VZ 视图的 frame。
+///
+/// `rect` 是 **webview 视口坐标**（orig top-left，CSS px ≈ point）。
+/// 当能找到承载插件 UI 的 webview 时，先用 `convertRect` 取它在
+/// `parent`（contentView）里的真实位置，再做纵向翻转，自动消化宿主顶部
+/// chrome / inset；找不到 webview 时退化为「webview == 整个 contentView」的旧算法。
+fn frame_in_parent(parent: &NSView, webview: Option<&NSView>, rect: ViewRect) -> NSRect {
+    let (origin_x, webview_top_from_bottom) = match webview {
+        Some(w) => unsafe {
+            let in_parent = parent.convertRect_fromView(w.frame(), w.superview().as_deref());
+            (
+                in_parent.origin.x,
+                in_parent.origin.y + in_parent.size.height,
+            )
+        },
+        None => (0.0, parent.bounds().size.height),
+    };
+    // 舞台顶边距 parent 底部 = webview 顶 - rect.y；再往下减 rect.height 得到原点的 y。
+    let top = webview_top_from_bottom - rect.y;
+    let y = top - rect.height;
     NSRect::new(
-        NSPoint::new(rect.x, y),
+        NSPoint::new(origin_x + rect.x, y),
         NSSize::new(rect.width.max(1.0), rect.height.max(1.0)),
     )
 }
@@ -88,8 +133,9 @@ pub fn attach_embedded(
     }
     let mtm = MainThreadMarker::new().ok_or_else(|| "必须在主线程挂载视图".to_string())?;
     let parent = host_content_view().ok_or_else(|| "找不到宿主窗口".to_string())?;
+    let webview = find_webview(&parent, 0);
     let view = create_view(mtm, machine, rect);
-    let frame = to_view_frame(&parent, rect);
+    let frame = frame_in_parent(&parent, webview.as_deref(), rect);
     view.setFrame(frame);
     view.setAutoresizingMask(NSAutoresizingMaskOptions::empty());
     parent.addSubview(&view);
@@ -128,8 +174,12 @@ pub fn attach_detached(
     Ok((view, window))
 }
 
-pub fn resize(view: &VZVirtualMachineView, parent: &NSView, rect: ViewRect) {
-    let frame = to_view_frame(parent, rect);
+pub fn resize(view: &VZVirtualMachineView, rect: ViewRect) {
+    let Some(parent) = (unsafe { view.superview() }) else {
+        return;
+    };
+    let webview = find_webview(&parent, 0);
+    let frame = frame_in_parent(&parent, webview.as_deref(), rect);
     view.setFrame(frame);
 }
 

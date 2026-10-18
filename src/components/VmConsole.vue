@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
 import { VmApi } from '@/services/vm-api';
@@ -112,6 +112,27 @@ const reconcile = async (): Promise<void> => {
   }
 };
 
+/**
+ * 立刻把原生 console 视图摘掉，但虚拟机会继续在后台运行。
+ *
+ * 原生视图是宿主窗口顶层、盖在 webview 之上的覆盖层。若切到别的插件 /
+ * TAB 时不摘除，它会悬浮在其它插件界面上造成遮挡。所以只要本控制台
+ * 「不再可见」（被隐藏、被 keep-alive 缓存、页面卸载）就主动 detach。
+ */
+const forceDetach = (): void => {
+  if (attachedId.value) {
+    void detach(attachedId.value);
+  }
+};
+
+const onVisibilityChange = (): void => {
+  if (document.hidden) {
+    forceDetach();
+  } else {
+    void reconcile();
+  }
+};
+
 watch(() => props.vm.state, () => void reconcile(), { immediate: true });
 watch(
   () => props.vm.id,
@@ -129,14 +150,22 @@ onMounted(() => {
     resizeObserver.observe(stageRef.value);
   }
   window.addEventListener('resize', scheduleSync);
+  // 宿主隐藏插件（切到其它 TAB）时 iframe 文档会变 hidden：借此摘掉原生视图，
+  // 避免它悬浮遮挡其它插件。重新可见时 reconcile 会重新挂载。
+  document.addEventListener('visibilitychange', onVisibilityChange);
   // 挂载时虚拟机可能已经在运行（例如从设置页返回），补一次挂载。
   void reconcile();
 });
+
+// keep-alive 场景：被缓存（切走）时摘掉原生视图，被重新激活时再挂。
+onDeactivated(() => forceDetach());
+onActivated(() => void reconcile());
 
 onBeforeUnmount(async () => {
   resizeObserver?.disconnect();
   resizeObserver = null;
   window.removeEventListener('resize', scheduleSync);
+  document.removeEventListener('visibilitychange', onVisibilityChange);
   if (rafHandle) {
     window.cancelAnimationFrame(rafHandle);
     rafHandle = 0;
