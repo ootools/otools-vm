@@ -18,6 +18,8 @@
   "vm.action.remove": "Quitar",
   "vm.action.openFolder": "Abrir carpeta",
   "vm.action.pickInstaller": "Elegir imagen",
+  "vm.action.manualPath": "Introducir ruta manualmente",
+  "vm.action.manualPathPlaceholder": "Pega una ruta absoluta, p. ej. /Users/me/Projects",
   "vm.action.forceStop": "Forzar apagado",
   "vm.action.console": "Consola",
   "vm.state.stopped": "Detenida",
@@ -97,6 +99,8 @@
   "vm.error.action": "La operación falló",
   "vm.error.nameRequired": "Introduce un nombre para la máquina",
   "vm.error.noEngine": "No hay ningún motor de virtualización disponible en este sistema",
+  "vm.error.pathNotAbsolute": "Introduce una ruta absoluta",
+  "vm.error.desktopOnly": "Las máquinas virtuales requieren la app de escritorio de OTools. Un navegador no tiene virtualización, así que no se pueden crear ni iniciar aquí.",
   "vm.unit.cpu": "núcleos",
   "vm.unit.mb": "MB",
   "vm.unit.gb": "GB"

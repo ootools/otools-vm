@@ -18,6 +18,8 @@
   "vm.action.remove": "Remove",
   "vm.action.openFolder": "Open folder",
   "vm.action.pickInstaller": "Choose image",
+  "vm.action.manualPath": "Enter path manually",
+  "vm.action.manualPathPlaceholder": "Paste an absolute path, e.g. /Users/me/Projects",
   "vm.action.forceStop": "Force stop",
   "vm.action.console": "Console",
   "vm.state.stopped": "Stopped",
@@ -97,6 +99,8 @@
   "vm.error.action": "Operation failed",
   "vm.error.nameRequired": "Please enter a machine name",
   "vm.error.noEngine": "No virtualization engine is available on this system",
+  "vm.error.pathNotAbsolute": "Please enter an absolute path",
+  "vm.error.desktopOnly": "Virtual machines require the OTools desktop app. A browser has no virtualization capability, so machines cannot be created or started here.",
   "vm.unit.cpu": "cores",
   "vm.unit.mb": "MB",
   "vm.unit.gb": "GB"

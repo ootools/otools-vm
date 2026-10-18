@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { t } from '@/i18n';
+import { isPluginRuntime, isTauriRuntime } from '@/sdk/runtime';
 import { vmStore } from '@/state/vm-store';
 import VmConsole from '@/components/VmConsole.vue';
 import VmCreateDialog from '@/components/VmCreateDialog.vue';
@@ -14,11 +15,20 @@ const createVisible = ref(false);
 const settingsVisible = ref(false);
 const selected = computed(() => vmStore.selected.value);
 
+/**
+ * 浏览器里没有 native 库，虚拟机功能不可能工作。
+ * 这里只在「加载失败 + 不在任何宿主运行时」时判定为不可用，
+ * 避免宿主桥尚未注入的那一瞬间闪一下错误页。
+ */
+const desktopOnly = computed(
+  () => Boolean(vmStore.state.error) && !isPluginRuntime() && !isTauriRuntime(),
+);
+
 let pollTimer = 0;
 
 const refresh = async (): Promise<void> => {
   await vmStore.load();
-  if (vmStore.state.error) {
+  if (vmStore.state.error && !desktopOnly.value) {
     ElMessage.error(vmStore.state.error);
   }
 };
@@ -68,7 +78,12 @@ onBeforeUnmount(() => {
 
 <template>
   <el-config-provider size="small">
-    <div class="vm-shell">
+    <div v-if="desktopOnly" class="vm-blocked">
+      <span class="vm-blocked-icon">🖥️</span>
+      <p>{{ t('vm.error.desktopOnly') }}</p>
+    </div>
+
+    <div v-else class="vm-shell">
       <VmSidebar
         :selected-id="vmStore.state.selectedId"
         @select="vmStore.select"
@@ -116,6 +131,30 @@ body {
   display: flex;
   height: 100vh;
   overflow: hidden;
+}
+
+.vm-blocked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100vh;
+  padding: 32px;
+  text-align: center;
+  color: var(--el-text-color-secondary);
+}
+
+.vm-blocked-icon {
+  font-size: 32px;
+  opacity: 0.6;
+}
+
+.vm-blocked p {
+  max-width: 420px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .vm-main {

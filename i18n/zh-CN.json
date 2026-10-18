@@ -18,6 +18,8 @@
   "vm.action.remove": "移除",
   "vm.action.openFolder": "打开目录",
   "vm.action.pickInstaller": "选择镜像",
+  "vm.action.manualPath": "手动输入路径",
+  "vm.action.manualPathPlaceholder": "粘贴绝对路径，例如 /Users/me/Projects",
   "vm.action.forceStop": "强制关机",
   "vm.action.console": "控制台",
   "vm.state.stopped": "已停止",
@@ -97,6 +99,8 @@
   "vm.error.action": "操作失败",
   "vm.error.nameRequired": "请填写虚拟机名称",
   "vm.error.noEngine": "当前系统没有可用的虚拟化引擎",
+  "vm.error.pathNotAbsolute": "请填写绝对路径",
+  "vm.error.desktopOnly": "虚拟机需要 OTools 桌面端。浏览器里没有虚拟化能力，无法创建或运行虚拟机。",
   "vm.unit.cpu": "核",
   "vm.unit.mb": "MB",
   "vm.unit.gb": "GB"

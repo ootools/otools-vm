@@ -18,6 +18,8 @@
   "vm.action.remove": "إزالة",
   "vm.action.openFolder": "فتح المجلد",
   "vm.action.pickInstaller": "اختيار صورة",
+  "vm.action.manualPath": "إدخال المسار يدويًا",
+  "vm.action.manualPathPlaceholder": "الصق مسارًا مطلقًا، مثال: /Users/me/Projects",
   "vm.action.forceStop": "إيقاف قسري",
   "vm.action.console": "وحدة التحكم",
   "vm.state.stopped": "متوقف",
@@ -97,6 +99,8 @@
   "vm.error.action": "فشلت العملية",
   "vm.error.nameRequired": "أدخل اسم الجهاز",
   "vm.error.noEngine": "لا يوجد محرك محاكاة متاح على هذا النظام",
+  "vm.error.pathNotAbsolute": "أدخل مسارًا مطلقًا",
+  "vm.error.desktopOnly": "تحتاج الأجهزة الافتراضية إلى تطبيق OTools لسطح المكتب. لا تتوفر المحاكاة في المتصفح، لذا لا يمكن إنشاء الأجهزة أو تشغيلها هنا.",
   "vm.unit.cpu": "أنوية",
   "vm.unit.mb": "م.ب",
   "vm.unit.gb": "غ.ب"

@@ -74,8 +74,9 @@ const pickInstaller = async (): Promise<void> => {
     if (picked?.path) {
       form.installerPath = picked.path;
     }
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : String(error));
+  } catch {
+    // 非 macOS 宿主没有原生面板；输入框本身可编辑，直接粘贴绝对路径即可。
+    ElMessage.info(t('vm.action.manualPathPlaceholder'));
   }
 };
 
@@ -151,7 +152,7 @@ const submit = async (): Promise<void> => {
 
       <el-form-item :label="t('vm.create.installer')">
         <div class="vm-form-file">
-          <el-input :model-value="form.installerPath" readonly :placeholder="t('vm.create.installerNone')" />
+          <el-input v-model="form.installerPath" :placeholder="t('vm.create.installerNone')" />
           <el-button @click="pickInstaller">{{ t('vm.action.pickInstaller') }}</el-button>
           <el-button v-if="form.installerPath" text @click="form.installerPath = ''">
             {{ t('vm.action.remove') }}

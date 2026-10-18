@@ -18,6 +18,8 @@
   "vm.action.remove": "Entfernen",
   "vm.action.openFolder": "Ordner öffnen",
   "vm.action.pickInstaller": "Image wählen",
+  "vm.action.manualPath": "Pfad manuell eingeben",
+  "vm.action.manualPathPlaceholder": "Absoluten Pfad einfügen, z. B. /Users/me/Projects",
   "vm.action.forceStop": "Erzwungen beenden",
   "vm.action.console": "Konsole",
   "vm.state.stopped": "Gestoppt",
@@ -97,6 +99,8 @@
   "vm.error.action": "Vorgang fehlgeschlagen",
   "vm.error.nameRequired": "Bitte einen VM-Namen eingeben",
   "vm.error.noEngine": "Auf diesem System ist keine Virtualisierungs-Engine verfügbar",
+  "vm.error.pathNotAbsolute": "Bitte einen absoluten Pfad eingeben",
+  "vm.error.desktopOnly": "Virtuelle Maschinen benötigen die OTools-Desktop-App. Ein Browser bietet keine Virtualisierung, daher lassen sich hier keine VMs erstellen oder starten.",
   "vm.unit.cpu": "Kerne",
   "vm.unit.mb": "MB",
   "vm.unit.gb": "GB"

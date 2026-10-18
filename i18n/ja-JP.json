@@ -18,6 +18,8 @@
   "vm.action.remove": "削除",
   "vm.action.openFolder": "フォルダを開く",
   "vm.action.pickInstaller": "イメージを選択",
+  "vm.action.manualPath": "パスを手入力",
+  "vm.action.manualPathPlaceholder": "絶対パスを貼り付けてください（例: /Users/me/Projects）",
   "vm.action.forceStop": "強制終了",
   "vm.action.console": "コンソール",
   "vm.state.stopped": "停止",
@@ -97,6 +99,8 @@
   "vm.error.action": "操作に失敗しました",
   "vm.error.nameRequired": "仮想マシン名を入力してください",
   "vm.error.noEngine": "このシステムには利用可能な仮想化エンジンがありません",
+  "vm.error.pathNotAbsolute": "絶対パスを入力してください",
+  "vm.error.desktopOnly": "仮想マシンは OTools デスクトップ版が必要です。ブラウザには仮想化機能がないため、作成も起動もできません。",
   "vm.unit.cpu": "コア",
   "vm.unit.mb": "MB",
   "vm.unit.gb": "GB"

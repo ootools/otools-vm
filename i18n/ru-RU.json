@@ -18,6 +18,8 @@
   "vm.action.remove": "Убрать",
   "vm.action.openFolder": "Открыть папку",
   "vm.action.pickInstaller": "Выбрать образ",
+  "vm.action.manualPath": "Ввести путь вручную",
+  "vm.action.manualPathPlaceholder": "Вставьте абсолютный путь, например /Users/me/Projects",
   "vm.action.forceStop": "Принудительно выключить",
   "vm.action.console": "Консоль",
   "vm.state.stopped": "Остановлена",
@@ -97,6 +99,8 @@
   "vm.error.action": "Операция не выполнена",
   "vm.error.nameRequired": "Введите название машины",
   "vm.error.noEngine": "В этой системе нет доступного движка виртуализации",
+  "vm.error.pathNotAbsolute": "Укажите абсолютный путь",
+  "vm.error.desktopOnly": "Виртуальным машинам нужно настольное приложение OTools. В браузере нет виртуализации, поэтому создать или запустить машину здесь нельзя.",
   "vm.unit.cpu": "ядер",
   "vm.unit.mb": "МБ",
   "vm.unit.gb": "ГБ"

@@ -147,6 +147,12 @@ const revealDisk = (): void => {
       </section>
 
       <section class="vm-settings-section">
+        <h4>{{ t('vm.create.installer') }}</h4>
+        <el-input v-model="form.installerPath" size="small" :placeholder="t('vm.create.installerNone')" />
+        <p class="vm-settings-hint">{{ t('vm.create.installerHint') }}</p>
+      </section>
+
+      <section class="vm-settings-section">
         <h4>{{ t('vm.settings.notes') }}</h4>
         <el-input v-model="form.notes" type="textarea" :rows="3" size="small" />
       </section>
