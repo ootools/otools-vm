@@ -13,12 +13,14 @@ use objc2_virtualization::{
     VZDiskImageStorageDeviceAttachment, VZEFIBootLoader, VZEFIVariableStore,
     VZEFIVariableStoreInitializationOptions, VZEntropyDeviceConfiguration,
     VZGraphicsDeviceConfiguration, VZHostAudioOutputStreamSink, VZKeyboardConfiguration,
-    VZLinuxRosettaAvailability, VZLinuxRosettaDirectoryShare,
+    VZConsoleDeviceConfiguration, VZLinuxRosettaAvailability,
+    VZLinuxRosettaDirectoryShare,
     VZMultipleDirectoryShare, VZNATNetworkDeviceAttachment, VZNetworkDeviceConfiguration,
-    VZPointingDeviceConfiguration, VZSerialPortAttachment, VZSerialPortConfiguration, VZSharedDirectory,
+    VZPointingDeviceConfiguration, VZSerialPortAttachment, VZSharedDirectory,
     VZSpiceAgentPortAttachment, VZStorageDeviceConfiguration, VZUSBKeyboardConfiguration,
     VZUSBScreenCoordinatePointingDeviceConfiguration, VZVirtualMachineConfiguration,
-    VZVirtioBlockDeviceConfiguration, VZVirtioConsoleDeviceSerialPortConfiguration,
+    VZVirtioBlockDeviceConfiguration, VZVirtioConsoleDeviceConfiguration,
+    VZVirtioConsolePortConfiguration,
     VZVirtioEntropyDeviceConfiguration, VZVirtioFileSystemDeviceConfiguration,
     VZVirtioGraphicsDeviceConfiguration, VZVirtioGraphicsScanoutConfiguration,
     VZVirtioNetworkDeviceConfiguration, VZVirtioSoundDeviceConfiguration,
@@ -42,6 +44,21 @@ where
 
 pub fn ns_error_text(error: &NSError) -> String {
     error.localizedDescription().to_string()
+}
+
+/// 把 VZ 的校验报错翻译成用户能行动的话。
+///
+/// 最常见的一条是权限缺失：`com.apple.security.virtualization` 属于**进程**，
+/// 插件动态库无法自带，必须由宿主主程序在签名时申请。用户看到原始英文
+/// 「The process doesn't have the … entitlement」只会一头雾水。
+fn explain_validate_error(error: &NSError) -> String {
+    let text = ns_error_text(error);
+    if text.contains("com.apple.security.virtualization") {
+        return "宿主程序缺少 com.apple.security.virtualization 权限，无法创建虚拟机。\
+               请在 OTools 的 src-tauri/entitlements.plist 里加上该键并重新构建安装包。"
+            .to_string();
+    }
+    format!("虚拟机配置校验失败：{}", text)
 }
 
 fn file_url(path: &str) -> Retained<NSURL> {
@@ -85,11 +102,21 @@ fn block_device(path: &str, read_only: bool) -> Result<Retained<VZVirtioBlockDev
     })
 }
 
+/// `build` 的产物：配置 + 一批必须与虚拟机同生共死的设备对象。
+///
+/// VZ 不在 `setXxxDevices:` 里强留所有中间对象：`VZSpiceAgentPortAttachment`
+/// 这类「附件」被 console port 引用后，如果宿主提前把它释放，VZ 在
+/// `_synchronousConfigurationForVirtualMachine` 里再读 `_attachment` 就是野指针，
+/// 主线程直接 SIGSEGV（实测 KERN_INVALID_ADDRESS 0x20）。
+/// 所以把这些对象随配置一起交出去，由调用方持有到 machine 销毁。
+pub struct BuiltConfig {
+    pub config: Retained<VZVirtualMachineConfiguration>,
+    /// 只为延长生命周期，不参与任何逻辑。
+    pub retained: Vec<Retained<objc2::runtime::AnyObject>>,
+}
+
 /// 构造完整配置。**必须在主线程调用**（VZ 对象不是 Send）。
-pub fn build(
-    spec: &VmSpec,
-    nvram_path: &str,
-) -> Result<Retained<VZVirtualMachineConfiguration>, String> {
+pub fn build(spec: &VmSpec, nvram_path: &str) -> Result<BuiltConfig, String> {
     spec.validate()?;
 
     if !std::path::Path::new(&spec.disk_path).exists() {
@@ -263,21 +290,48 @@ pub fn build(
     }
 
     // ---- 剪贴板：SPICE agent 走 virtio-console ----
-    // 客户机需要 spice-vdagent（Linux）或 spice-guest-tools（Windows）才能真正生效。
+    //
+    // ⚠️ SPICE agent 必须挂在 **console device 的 port** 上，不是 serial port。
+    // 挂到 `VZVirtioConsoleDeviceSerialPortConfiguration` 上不会立刻报错，
+    // 但 VZ 之后重建配置时 `_attachment` 是 nil，主线程直接 SIGSEGV
+    // （KERN_INVALID_ADDRESS 0x20，堆栈落在 -[VZSpiceAgentPortAttachment _attachment]）。
+    // 实测：换成 file-handle 附件就正常，说明问题在「容器用错」而不是对象生命周期。
+    let mut console_ports: Vec<Retained<VZVirtioConsolePortConfiguration>> = Vec::new();
+    let mut retained: Vec<Retained<objc2::runtime::AnyObject>> = Vec::new();
     if spec.clipboard {
         let spice = unsafe { VZSpiceAgentPortAttachment::new() };
-        let port = unsafe { VZVirtioConsoleDeviceSerialPortConfiguration::new() };
+        let port = unsafe { VZVirtioConsolePortConfiguration::new() };
         unsafe {
             spice.setSharesClipboard(true);
             let attachment_ref: &VZSerialPortAttachment = up(&spice);
             port.setAttachment(Some(attachment_ref));
-            let port_ref: &VZSerialPortConfiguration = up(&port);
-            config.setSerialPorts(&NSArray::from_slice(&[port_ref]));
+            // 端口名必须是 VZ 约定的那个，客户机的 vdagent 按名字找端口。
+            port.setName(Some(&VZSpiceAgentPortAttachment::spiceAgentPortName()));
+            console_ports.push(port);
+            retained.push(
+                Retained::retain(&*spice as *const VZSpiceAgentPortAttachment as *mut _)
+                    .expect("retain 不会返回 None"),
+            );
         }
     }
+    if !console_ports.is_empty() {
+        let device = unsafe { VZVirtioConsoleDeviceConfiguration::new() };
+        unsafe {
+            // `ports` 没有 setter，返回的就是设备自己的可变数组，直接往里塞。
+            let ports = device.ports();
+            for (index, port) in console_ports.iter().enumerate() {
+                ports.setObject_atIndexedSubscript(Some(&**port), index);
+            }
+            let device_ref: &VZConsoleDeviceConfiguration = up(&device);
+            config.setConsoleDevices(&NSArray::from_slice(&[device_ref]));
+        }
+        retained.push(unsafe {
+            Retained::retain(&*device as *const VZVirtioConsoleDeviceConfiguration as *mut _)
+                .expect("retain 不会返回 None")
+        });
+    }
 
-    unsafe { config.validateWithError() }
-        .map_err(|error| format!("虚拟机配置校验失败：{}", ns_error_text(&error)))?;
+    unsafe { config.validateWithError() }.map_err(|error| explain_validate_error(&error))?;
 
-    Ok(config)
+    Ok(BuiltConfig { config, retained })
 }

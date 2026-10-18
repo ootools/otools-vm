@@ -51,6 +51,19 @@ QEMU 的 TCG 模拟慢一个数量级，而 QEMU + HVF 又拿不到 VZ 那种可
 「手动输入绝对路径」；浏览器里则直接给出「需要桌面端」的提示 —— 虚拟机本身依赖原生
 虚拟化，浏览器里没有可降级的实现。
 
+**宿主要带 virtualization 权限（必须）**：
+
+`com.apple.security.virtualization` 属于**进程**，插件动态库无法自带，只能由主程序
+在签名时申请。宿主 `src-tauri/entitlements.plist` 里必须有这一项，
+否则 `validateWithError` 直接拒绝：
+
+```
+The process doesn't have the "com.apple.security.virtualization" entitlement.
+```
+
+实测 ad-hoc 签名（`signingIdentity: "-"`）即可生效，不需要 provisioning profile。
+插件侧会把这条报错翻译成中文提示，而不是把 Apple 原文甩给用户。
+
 **已知限制（写清楚比藏着好）**：
 
 - **Windows 客户机的目录共享**：virtio-fs 在 Windows 上没有可用驱动，v1 只在 Linux 客户机开箱可用。
@@ -131,11 +144,17 @@ pnpm build               # 前端产物到 dist/
 pnpm pack                # 打 .oplg 到 dist-pack/
 pnpm verify              # 校验包结构
 pnpm smoke               # 原生层冒烟（真动态库 + 真磁盘，18 项断言）
+pnpm probe:start         # 真启动验证（签上 virtualization 权限的 C 宿主 + 真客户机）
 ```
 
 `pnpm smoke` 直接用 ctypes 调 `otools_plugin_invoke`，不经宿主，
 覆盖建机 / 克隆（校验写时复制确实生效）/ 扩容 / 拒绝缩容 / 删除。
-改 native 后先跑它，再考虑发包。
+
+`pnpm probe:start` 解决 Python 拿不到 virtualization 权限的问题：它编译一个
+最小的 Objective-C 宿主、签上权限、dlopen 插件动态库，真起一台虚拟机并驱动
+主运行循环直到 `state=running`。**改 `config.rs` 后必须跑这个**——
+VZ 的很多错误只在异步重建配置时才暴露（例如一次 SPICE 附件挂错容器导致的
+主线程 SIGSEGV，只有跑到 running 才发现）。
 
 宿主按平台挑 `lib/macOS.dylib` / `lib/Windows.dll` / `lib/Linux.so`，
 文件名是宿主约定，**不跟随 crate 名**。

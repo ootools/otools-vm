@@ -20,7 +20,7 @@ use objc2::{AnyThread, MainThreadMarker};
 use objc2_app_kit::{NSView, NSWindow};
 use objc2_foundation::NSError;
 use objc2_virtualization::{
-    VZVirtualMachine, VZVirtualMachineState, VZVirtualMachineView,
+    VZVirtualMachine, VZVirtualMachineConfiguration, VZVirtualMachineState, VZVirtualMachineView,
 };
 
 use super::{Engine, ViewRect};
@@ -30,6 +30,12 @@ use crate::paths;
 /// 一台在宿主进程内活着的虚拟机。
 struct VzInstance {
     machine: Retained<VZVirtualMachine>,
+    /// 构造期用到的中间设备对象，必须活到 machine 销毁（见 config::BuiltConfig）。
+    _retained: Vec<Retained<objc2::runtime::AnyObject>>,
+    /// 原始配置对象也要留住：VZ 在 start 之后还会经
+    /// `_synchronousConfigurationForVirtualMachine` 再读一遍配置里的附件，
+    /// 那时若配置已被释放，`VZSpiceAgentPortAttachment` 就是野指针。
+    _config: Retained<VZVirtualMachineConfiguration>,
     view: Option<Retained<VZVirtualMachineView>>,
     /// 独立窗口模式下的窗口（内嵌模式为 None）。
     window: Option<Retained<NSWindow>>,
@@ -380,11 +386,11 @@ fn ensure_instance(spec: &VmSpec) -> Result<(), String> {
         }
         let nvram = paths::vm_nvram_path(&spec.id);
         let nvram_text = nvram.to_string_lossy().to_string();
-        let configuration = config::build(spec, &nvram_text)?;
+        let built = config::build(spec, &nvram_text)?;
         let machine = unsafe {
             VZVirtualMachine::initWithConfiguration_queue(
                 VZVirtualMachine::alloc(),
-                &configuration,
+                &built.config,
                 DispatchQueue::main(),
             )
         };
@@ -392,6 +398,8 @@ fn ensure_instance(spec: &VmSpec) -> Result<(), String> {
             spec.id.clone(),
             VzInstance {
                 machine,
+                _retained: built.retained,
+                _config: built.config,
                 view: None,
                 window: None,
                 error: Arc::new(Mutex::new(String::new())),

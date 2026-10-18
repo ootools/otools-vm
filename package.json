@@ -15,7 +15,8 @@
     "pack": "node scripts/pack-plugin.mjs",
     "verify": "node scripts/verify-plugin.mjs",
     "release": "node scripts/pack-plugin.mjs && node scripts/verify-plugin.mjs",
-    "smoke": "python3 scripts/smoke-native.py"
+    "smoke": "python3 scripts/smoke-native.py",
+    "probe:start": "bash scripts/probe-start.sh"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
