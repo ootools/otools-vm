@@ -21,6 +21,7 @@ const form = reactive<{
   clipboard: boolean;
   autoResize: boolean;
   audio: boolean;
+  rosetta: boolean;
   installerPath: string;
   notes: string;
 }>({
@@ -31,6 +32,7 @@ const form = reactive<{
   clipboard: true,
   autoResize: true,
   audio: true,
+  rosetta: false,
   installerPath: '',
   notes: '',
 });
@@ -52,6 +54,7 @@ watch(
     form.clipboard = vm.clipboard;
     form.autoResize = vm.autoResize;
     form.audio = vm.audio;
+    form.rosetta = vm.rosetta;
     form.installerPath = vm.installerPath ?? '';
     form.notes = vm.notes;
   },
@@ -72,6 +75,7 @@ const save = async (): Promise<void> => {
     clipboard: form.clipboard,
     autoResize: form.autoResize,
     audio: form.audio,
+    rosetta: form.rosetta,
     installerPath: form.installerPath || null,
     notes: form.notes,
   };
@@ -83,6 +87,21 @@ const save = async (): Promise<void> => {
     ElMessage.error(vmStore.state.lastActionError || t('vm.error.action'));
   }
 };
+
+// Rosetta 只对 Linux 客户机有意义；宿主装没装决定开关能不能开。
+const rosettaSupported = computed(
+  () => Boolean(vmStore.state.engine?.caps.rosetta) && props.vm?.os === 'linux',
+);
+const rosettaInstalled = computed(() => vmStore.state.rosetta === 'installed');
+const rosettaHint = computed(() => {
+  if (!rosettaSupported.value) {
+    return t('vm.rosetta.notSupported');
+  }
+  if (!rosettaInstalled.value) {
+    return t('vm.rosetta.notInstalled');
+  }
+  return t('vm.rosetta.hint');
+});
 
 const revealDisk = (): void => {
   if (props.vm?.diskPath) {
@@ -135,6 +154,17 @@ const revealDisk = (): void => {
             <span>{{ t('vm.settings.audio') }}</span>
           </div>
           <el-switch v-model="form.audio" size="small" />
+        </div>
+        <div class="vm-settings-toggle">
+          <div>
+            <span>{{ t('vm.rosetta.label') }}</span>
+            <p class="vm-settings-hint">{{ rosettaHint }}</p>
+          </div>
+          <el-switch
+            v-model="form.rosetta"
+            size="small"
+            :disabled="!rosettaSupported || !rosettaInstalled"
+          />
         </div>
       </section>
 

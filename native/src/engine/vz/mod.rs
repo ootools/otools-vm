@@ -121,7 +121,9 @@ impl Engine for VzEngine {
                 auto_resize: true,
                 audio: true,
                 snapshots: false,
-                rosetta: false,
+                clone: true,
+                resize_disk: true,
+                rosetta: true,
                 bridged_network: false,
             },
         }

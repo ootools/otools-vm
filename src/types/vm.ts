@@ -32,6 +32,8 @@ export interface VmSpec {
   clipboard: boolean;
   autoResize: boolean;
   audio: boolean;
+  /** 在 Linux 客户机里暴露 Rosetta，用 arm64 宿主直接跑 x86_64 二进制。 */
+  rosetta: boolean;
   displayWidth: number;
   displayHeight: number;
   notes: string;
@@ -52,9 +54,16 @@ export interface EngineCaps {
   autoResize: boolean;
   audio: boolean;
   snapshots: boolean;
+  /** 能否复制虚拟机（APFS 写时复制，秒级且几乎不占空间）。 */
+  clone: boolean;
+  /** 能否扩容磁盘（只增不减）。 */
+  resizeDisk: boolean;
   rosetta: boolean;
   bridgedNetwork: boolean;
 }
+
+/** Rosetta 在宿主上的可用状态。 */
+export type RosettaStatus = 'installed' | 'notInstalled' | 'notSupported';
 
 export interface EngineInfo {
   kind: 'vz' | 'qemu' | 'none';
@@ -100,6 +109,7 @@ export interface VmCreateInput {
   clipboard?: boolean;
   autoResize?: boolean;
   audio?: boolean;
+  rosetta?: boolean;
   displayWidth?: number;
   displayHeight?: number;
 }
@@ -113,6 +123,17 @@ export interface VmUpdateInput {
   clipboard?: boolean;
   autoResize?: boolean;
   audio?: boolean;
+  rosetta?: boolean;
   installerPath?: string | null;
   notes?: string;
+}
+
+export interface VmCloneInput {
+  id: string;
+  name: string;
+}
+
+export interface VmResizeDiskInput {
+  id: string;
+  diskSizeGb: number;
 }

@@ -58,6 +58,93 @@ pub fn remove_vm_dir(id: &str) -> Result<(), String> {
     fs::remove_dir_all(&dir).map_err(|error| format!("删除虚拟机目录失败 {}: {}", dir.display(), error))
 }
 
+/// 复制一台虚拟机：规格 + 磁盘 + NVRAM。
+///
+/// macOS 上用 `cp -c`（APFS clonefile，写时复制）—— 秒级完成、**不占额外空间**，
+/// 直到新虚拟机真的写入才分配块。其它平台退化为普通复制。
+///
+/// NVRAM 必须一起复制：它是客户机的引导项与固件状态，漏掉会让克隆出来的机器
+/// 直接落到 EFI shell。
+pub fn clone_vm(source: &VmSpec, new_id: &str, new_name: &str) -> Result<VmSpec, String> {
+    let target_dir = paths::vm_dir(new_id);
+    paths::ensure_dir(&target_dir)?;
+
+    let target_disk = paths::vm_disk_path(new_id);
+    clone_file(std::path::Path::new(&source.disk_path), &target_disk)?;
+
+    let source_nvram = paths::vm_nvram_path(&source.id);
+    if source_nvram.exists() {
+        let target_nvram = paths::vm_nvram_path(new_id);
+        clone_file(&source_nvram, &target_nvram)?;
+    }
+
+    let mut spec = source.clone();
+    spec.id = new_id.to_string();
+    spec.name = new_name.to_string();
+    spec.disk_path = target_disk.to_string_lossy().to_string();
+    spec.created_at = now_seconds();
+    save_spec(&spec)?;
+    Ok(spec)
+}
+
+/// 优先走写时复制，失败再退化为整盘复制。
+fn clone_file(source: &std::path::Path, target: &std::path::Path) -> Result<(), String> {
+    if !source.exists() {
+        return Err(format!("源文件不存在：{}", source.display()));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let status = std::process::Command::new("cp")
+            .arg("-c")
+            .arg(source)
+            .arg(target)
+            .status();
+        if let Ok(status) = status {
+            if status.success() {
+                return Ok(());
+            }
+        }
+        eprintln!("[vm] clonefile 失败，退化为普通复制：{}", source.display());
+    }
+    std::fs::copy(source, target)
+        .map(|_| ())
+        .map_err(|error| format!("复制文件失败 {}: {}", source.display(), error))
+}
+
+/// 扩容磁盘。只增不减：稀疏文件扩长是安全的，缩短会直接切掉客户机数据。
+///
+/// ⚠️ 宿主侧扩完只是「块设备变大了」，客户机里还要自己扩分区/文件系统：
+/// Linux `growpart` + `resize2fs`，Windows 在「磁盘管理」里扩展卷。
+pub fn resize_disk(spec: &VmSpec, new_size_gb: u64) -> Result<u64, String> {
+    if new_size_gb < spec.disk_size_gb {
+        return Err(format!(
+            "磁盘只能扩大：当前 {} GB，不能缩到 {} GB",
+            spec.disk_size_gb, new_size_gb
+        ));
+    }
+    if new_size_gb == spec.disk_size_gb {
+        return Ok(new_size_gb);
+    }
+    let path = std::path::Path::new(&spec.disk_path);
+    if !path.exists() {
+        return Err(format!("系统盘不存在：{}", spec.disk_path));
+    }
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .map_err(|error| format!("打开系统盘失败: {}", error))?;
+    file.set_len(new_size_gb.saturating_mul(1024 * 1024 * 1024))
+        .map_err(|error| format!("扩容系统盘失败: {}", error))?;
+    Ok(new_size_gb)
+}
+
+fn now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 /// 创建稀疏 RAW 磁盘。
 ///
 /// VZ 只接受 RAW/ASIF，稀疏文件在宿主上不占实际空间，客户机写入时才落盘。

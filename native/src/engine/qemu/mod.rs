@@ -221,6 +221,9 @@ impl Engine for QemuEngine {
                 auto_resize: false,
                 audio: true,
                 snapshots: false,
+                // 进程式后端没有写时复制，克隆退化为整盘复制（仍然可用）。
+                clone: true,
+                resize_disk: true,
                 rosetta: false,
                 bridged_network: true,
             },

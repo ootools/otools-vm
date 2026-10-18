@@ -19,8 +19,8 @@ use serde_json::{json, Value};
 
 use engine::{Engine, ViewRect};
 use model::{
-    EngineInfo, GuestOs, HostInfo, SharedDir, VmCreateInput, VmSpec, VmSummary, VmUpdateInput,
-    VmWorkspace,
+    EngineInfo, GuestOs, HostInfo, SharedDir, VmCloneInput, VmCreateInput, VmResizeDiskInput,
+    VmSpec, VmSummary, VmUpdateInput, VmWorkspace,
 };
 
 static ENGINE: OnceLock<Arc<dyn Engine>> = OnceLock::new();
@@ -125,6 +125,7 @@ fn cmd_create(payload: &Value) -> Result<Value, String> {
         clipboard: input.clipboard.unwrap_or(true),
         auto_resize: input.auto_resize.unwrap_or(true),
         audio: input.audio.unwrap_or(true),
+        rosetta: input.rosetta.unwrap_or(false),
         display_width: input.display_width.unwrap_or(1280),
         display_height: input.display_height.unwrap_or(800),
         notes: String::new(),
@@ -176,6 +177,9 @@ fn cmd_update(payload: &Value) -> Result<Value, String> {
     }
     if let Some(value) = input.audio {
         spec.audio = value;
+    }
+    if let Some(value) = input.rosetta {
+        spec.rosetta = value;
     }
     if let Some(value) = input.installer_path {
         spec.installer_path = if value.trim().is_empty() { None } else { Some(value) };
@@ -289,6 +293,70 @@ fn pick_path(title: &str, directory: bool) -> Result<Value, String> {
     {
         let _ = (title, directory);
         Err("当前平台请手动输入路径".to_string())
+    }
+}
+
+fn cmd_clone(payload: &Value) -> Result<Value, String> {
+    let input: VmCloneInput = serde_json::from_value(payload.clone())
+        .map_err(|error| format!("克隆参数解析失败: {}", error))?;
+    let engine = engine();
+    let source = store::load_spec(&input.id)?;
+
+    let name = input.name.trim();
+    if name.is_empty() {
+        return Err("克隆后的名称不能为空".to_string());
+    }
+
+    // 克隆必须在一台「安静」的机器上做：运行中复制会拿到撕裂的磁盘状态。
+    let state = engine.state(&source);
+    if state != model::VmState::Stopped && state != model::VmState::Error {
+        return Err("请先关闭虚拟机再克隆".to_string());
+    }
+
+    let new_id = new_vm_id();
+    let clone = store::clone_vm(&source, &new_id, name)?;
+    serde_json::to_value(summary_for(engine.as_ref(), &clone)).map_err(|error| error.to_string())
+}
+
+fn cmd_resize_disk(payload: &Value) -> Result<Value, String> {
+    let input: VmResizeDiskInput = serde_json::from_value(payload.clone())
+        .map_err(|error| format!("扩容参数解析失败: {}", error))?;
+    let engine = engine();
+    let mut spec = store::load_spec(&input.id)?;
+
+    let state = engine.state(&spec);
+    if state != model::VmState::Stopped && state != model::VmState::Error {
+        return Err("请先关闭虚拟机再扩容磁盘".to_string());
+    }
+
+    let size = store::resize_disk(&spec, input.disk_size_gb)?;
+    spec.disk_size_gb = size;
+    store::save_spec(&spec)?;
+
+    serde_json::to_value(summary_for(engine.as_ref(), &spec)).map_err(|error| error.to_string())
+}
+
+/// Rosetta 在宿主上的可用状态：`installed` / `notInstalled` / `notSupported`。
+fn cmd_rosetta_status() -> Result<Value, String> {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_virtualization::{VZLinuxRosettaAvailability, VZLinuxRosettaDirectoryShare};
+        if !cfg!(target_arch = "aarch64") {
+            return Ok(json!({ "status": "notSupported" }));
+        }
+        let availability = unsafe { VZLinuxRosettaDirectoryShare::availability() };
+        let status = if availability == VZLinuxRosettaAvailability::Installed {
+            "installed"
+        } else if availability == VZLinuxRosettaAvailability::NotInstalled {
+            "notInstalled"
+        } else {
+            "notSupported"
+        };
+        Ok(json!({ "status": status }))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(json!({ "status": "notSupported" }))
     }
 }
 
@@ -406,6 +474,9 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
         "vm_attach_view" => cmd_attach_view(&payload),
         "vm_update_view_rect" => cmd_update_view_rect(&payload),
         "vm_detach_view" => cmd_detach_view(&payload),
+        "vm_clone" => cmd_clone(&payload),
+        "vm_resize_disk" => cmd_resize_disk(&payload),
+        "vm_rosetta_status" => cmd_rosetta_status(),
         "vm_pick_folder" => cmd_pick_folder(&payload),
         "vm_pick_file" => cmd_pick_file(&payload),
         "vm_shutdown" => cmd_shutdown(),

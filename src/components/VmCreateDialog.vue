@@ -24,6 +24,7 @@ const form = reactive<{
   clipboard: boolean;
   autoResize: boolean;
   audio: boolean;
+  rosetta: boolean;
 }>({
   name: '',
   os: 'linux',
@@ -36,6 +37,7 @@ const form = reactive<{
   clipboard: true,
   autoResize: true,
   audio: true,
+  rosetta: false,
 });
 
 const osOptions = computed(() => [
@@ -44,6 +46,18 @@ const osOptions = computed(() => [
   { value: 'macos' as GuestOs, label: t('vm.create.osMacos') },
   { value: 'other' as GuestOs, label: t('vm.create.osOther') },
 ]);
+
+// Rosetta 只对 Linux 客户机开放，且宿主必须已经装好。
+const rosettaSupported = computed(
+  () => Boolean(vmStore.state.engine?.caps.rosetta) && form.os === 'linux',
+);
+const rosettaInstalled = computed(() => vmStore.state.rosetta === 'installed');
+const rosettaHint = computed(() => {
+  if (!rosettaInstalled.value) {
+    return t('vm.rosetta.notInstalled');
+  }
+  return t('vm.rosetta.hint');
+});
 
 const maxCpus = computed(() => Math.max(2, host.value?.recommendedCpus ?? 4));
 const maxMemory = computed(() => Math.max(2048, host.value?.recommendedMemoryMb ?? 8192));
@@ -60,6 +74,7 @@ const reset = (): void => {
   form.clipboard = true;
   form.autoResize = true;
   form.audio = true;
+  form.rosetta = false;
 };
 
 watch(visible, (open) => {
@@ -98,6 +113,7 @@ const submit = async (): Promise<void> => {
     clipboard: form.clipboard,
     autoResize: form.autoResize,
     audio: form.audio,
+    rosetta: form.rosetta,
     displayWidth: 1280,
     displayHeight: 800,
   };
@@ -161,6 +177,13 @@ const submit = async (): Promise<void> => {
         <p class="vm-form-hint">{{ t('vm.create.installerHint') }}</p>
       </el-form-item>
 
+      <el-form-item v-if="rosettaSupported" :label="t('vm.rosetta.label')">
+        <div class="vm-form-toggle">
+          <el-switch v-model="form.rosetta" :disabled="!rosettaInstalled" />
+          <span class="vm-form-hint">{{ rosettaHint }}</span>
+        </div>
+      </el-form-item>
+
       <el-form-item :label="t('vm.create.sharedDirs')">
         <SharedDirEditor v-model="form.sharedDirs" />
       </el-form-item>
@@ -193,6 +216,17 @@ const submit = async (): Promise<void> => {
   font-size: 11px;
   line-height: 1.5;
   color: var(--el-text-color-secondary);
+}
+
+.vm-form-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.vm-form-toggle .vm-form-hint {
+  margin: 0;
 }
 
 .vm-form-file {

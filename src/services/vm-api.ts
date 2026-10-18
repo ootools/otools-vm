@@ -4,8 +4,11 @@ import type {
   HostInfo,
   VmCreateInput,
   VmSummary,
+  VmCloneInput,
+  VmResizeDiskInput,
   VmUpdateInput,
   VmWorkspace,
+  RosettaStatus,
   ViewRect,
 } from '@/types/vm';
 
@@ -18,6 +21,11 @@ export const VmApi = {
   create: (input: VmCreateInput) => invokeNative<VmSummary>('vm_create', input),
   update: (input: VmUpdateInput) => invokeNative<VmSummary>('vm_update', input),
   remove: (id: string) => invokeNative<{ ok: boolean }>('vm_delete', { id }),
+  clone: (input: VmCloneInput) => invokeNative<VmSummary>('vm_clone', input),
+  resizeDisk: (input: VmResizeDiskInput) =>
+    invokeNative<VmSummary>('vm_resize_disk', input),
+  getRosettaStatus: () =>
+    invokeNative<{ status: RosettaStatus }>('vm_rosetta_status').then((result) => result.status),
 
   start: (id: string) => invokeNative<{ ok: boolean }>('vm_start', { id }),
   stop: (id: string) => invokeNative<{ ok: boolean }>('vm_stop', { id }),

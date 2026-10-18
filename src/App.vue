@@ -4,8 +4,10 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { t } from '@/i18n';
 import { isPluginRuntime, isTauriRuntime } from '@/sdk/runtime';
 import { vmStore } from '@/state/vm-store';
+import VmCloneDialog from '@/components/VmCloneDialog.vue';
 import VmConsole from '@/components/VmConsole.vue';
 import VmCreateDialog from '@/components/VmCreateDialog.vue';
+import VmResizeDiskDialog from '@/components/VmResizeDiskDialog.vue';
 import VmSettingsPanel from '@/components/VmSettingsPanel.vue';
 import VmSidebar from '@/components/VmSidebar.vue';
 import VmToolbar from '@/components/VmToolbar.vue';
@@ -13,6 +15,8 @@ import VmWelcomeView from '@/components/VmWelcomeView.vue';
 
 const createVisible = ref(false);
 const settingsVisible = ref(false);
+const cloneVisible = ref(false);
+const resizeVisible = ref(false);
 const selected = computed(() => vmStore.selected.value);
 
 /**
@@ -37,7 +41,7 @@ const poll = (): void => {
   if (typeof document !== 'undefined' && document.hidden) {
     return;
   }
-  if (vmStore.state.busy || createVisible.value) {
+  if (vmStore.state.busy || createVisible.value || cloneVisible.value || resizeVisible.value) {
     return;
   }
   void vmStore.refreshStates();
@@ -98,6 +102,8 @@ onBeforeUnmount(() => {
           :vm="selected"
           @settings="settingsVisible = true"
           @delete="requestDelete"
+          @clone="cloneVisible = true"
+          @resize-disk="resizeVisible = true"
         />
         <VmConsole v-if="selected" :key="selected.id" :vm="selected" />
         <VmWelcomeView v-else @create="createVisible = true" />
@@ -105,6 +111,8 @@ onBeforeUnmount(() => {
     </div>
 
     <VmCreateDialog v-model="createVisible" />
+    <VmCloneDialog v-model="cloneVisible" :vm="selected" />
+    <VmResizeDiskDialog v-model="resizeVisible" :vm="selected" />
     <VmSettingsPanel v-model="settingsVisible" :vm="selected" />
   </el-config-provider>
 </template>

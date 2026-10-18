@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Delete, Setting, VideoPause, VideoPlay, SwitchButton, RefreshLeft } from '@element-plus/icons-vue';
+import {
+  CopyDocument,
+  Delete,
+  Expand,
+  RefreshLeft,
+  Setting,
+  SwitchButton,
+  VideoPause,
+  VideoPlay,
+} from '@element-plus/icons-vue';
 import { t } from '@/i18n';
 import { vmStore } from '@/state/vm-store';
 import type { VmSummary } from '@/types/vm';
@@ -10,7 +19,8 @@ const props = defineProps<{ vm: VmSummary }>();
 const emit = defineEmits<{
   (event: 'settings'): void;
   (event: 'delete'): void;
-  (event: 'toggle-console'): void;
+  (event: 'clone'): void;
+  (event: 'resize-disk'): void;
 }>();
 
 const busy = computed(() => vmStore.state.busy || isBusyState(props.vm.state));
@@ -20,6 +30,11 @@ const canStop = computed(
 );
 const canPause = computed(() => props.vm.state === 'running');
 const canResume = computed(() => props.vm.state === 'paused');
+// 克隆与扩容都要求磁盘处于一致状态，运行中交给 native 再挡一道。
+const canClone = computed(() => canStart.value && Boolean(vmStore.state.engine?.caps.clone));
+const canResizeDisk = computed(
+  () => canStart.value && Boolean(vmStore.state.engine?.caps.resizeDisk),
+);
 
 const run = async (action: () => Promise<boolean>) => {
   await action();
@@ -79,6 +94,22 @@ const run = async (action: () => Promise<boolean>) => {
       >
         {{ t('vm.action.stop') }}
       </el-button>
+      <el-button
+        size="small"
+        :icon="CopyDocument"
+        circle
+        :disabled="!canClone"
+        :title="t('vm.action.clone')"
+        @click="emit('clone')"
+      />
+      <el-button
+        size="small"
+        :icon="Expand"
+        circle
+        :disabled="!canResizeDisk"
+        :title="t('vm.action.resizeDisk')"
+        @click="emit('resize-disk')"
+      />
       <el-button size="small" :icon="Setting" circle @click="emit('settings')" />
       <el-button size="small" :icon="Delete" circle @click="emit('delete')" />
     </div>

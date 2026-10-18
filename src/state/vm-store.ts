@@ -1,6 +1,13 @@
 import { computed, reactive } from 'vue';
 import { VmApi } from '@/services/vm-api';
-import type { EngineInfo, HostInfo, VmCreateInput, VmSummary, VmUpdateInput } from '@/types/vm';
+import type {
+  EngineInfo,
+  HostInfo,
+  RosettaStatus,
+  VmCreateInput,
+  VmSummary,
+  VmUpdateInput,
+} from '@/types/vm';
 
 interface VmStoreState {
   loading: boolean;
@@ -11,6 +18,8 @@ interface VmStoreState {
   vms: VmSummary[];
   selectedId: string;
   lastActionError: string;
+  /** Rosetta 在宿主上的状态；null 表示还没查过。 */
+  rosetta: RosettaStatus | null;
 }
 
 const state = reactive<VmStoreState>({
@@ -22,6 +31,7 @@ const state = reactive<VmStoreState>({
   vms: [],
   selectedId: '',
   lastActionError: '',
+  rosetta: null,
 });
 
 const selected = computed(() => state.vms.find((vm) => vm.id === state.selectedId) ?? null);
@@ -32,6 +42,10 @@ async function load(): Promise<void> {
   state.loading = true;
   try {
     const workspace = await VmApi.getWorkspace();
+    // Rosetta 状态只影响一个开关的可用性，查询失败不影响主流程。
+    if (workspace.engine.caps.rosetta && state.rosetta === null) {
+      state.rosetta = await VmApi.getRosettaStatus().catch(() => null);
+    }
     state.engine = workspace.engine;
     state.host = workspace.host;
     state.vms = workspace.vms;
@@ -106,6 +120,30 @@ async function update(input: VmUpdateInput): Promise<boolean> {
   return done;
 }
 
+async function clone(id: string, name: string): Promise<VmSummary | null> {
+  state.busy = true;
+  state.lastActionError = '';
+  try {
+    const created = await VmApi.clone({ id, name });
+    await load();
+    state.selectedId = created.id;
+    return created;
+  } catch (error) {
+    state.lastActionError = error instanceof Error ? error.message : String(error);
+    return null;
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function resizeDisk(id: string, diskSizeGb: number): Promise<boolean> {
+  const done = await run(() => VmApi.resizeDisk({ id, diskSizeGb }));
+  if (done) {
+    await load();
+  }
+  return done;
+}
+
 async function remove(id: string): Promise<boolean> {
   const done = await run(() => VmApi.remove(id));
   if (done) {
@@ -131,4 +169,6 @@ export const vmStore = {
   create,
   update,
   remove,
+  clone,
+  resizeDisk,
 };

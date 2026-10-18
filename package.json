@@ -14,7 +14,8 @@
     "preview": "vite preview --host 127.0.0.1 --port 5162",
     "pack": "node scripts/pack-plugin.mjs",
     "verify": "node scripts/verify-plugin.mjs",
-    "release": "node scripts/pack-plugin.mjs && node scripts/verify-plugin.mjs"
+    "release": "node scripts/pack-plugin.mjs && node scripts/verify-plugin.mjs",
+    "smoke": "python3 scripts/smoke-native.py"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",

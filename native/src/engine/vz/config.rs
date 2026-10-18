@@ -4,7 +4,7 @@
 //! EFI 引导 + virtio-blk 系统盘 + virtio-net(NAT) + virtio-gpu + virtio-entropy
 //! + virtio-snd + virtio-fs 共享目录 + SPICE agent 剪贴板。
 
-use crate::model::VmSpec;
+use crate::model::{GuestOs, VmSpec};
 use objc2::rc::Retained;
 use objc2::AnyThread;
 use objc2_foundation::{NSArray, NSDictionary, NSError, NSString, NSURL};
@@ -13,6 +13,7 @@ use objc2_virtualization::{
     VZDiskImageStorageDeviceAttachment, VZEFIBootLoader, VZEFIVariableStore,
     VZEFIVariableStoreInitializationOptions, VZEntropyDeviceConfiguration,
     VZGraphicsDeviceConfiguration, VZHostAudioOutputStreamSink, VZKeyboardConfiguration,
+    VZLinuxRosettaAvailability, VZLinuxRosettaDirectoryShare,
     VZMultipleDirectoryShare, VZNATNetworkDeviceAttachment, VZNetworkDeviceConfiguration,
     VZPointingDeviceConfiguration, VZSerialPortAttachment, VZSerialPortConfiguration, VZSharedDirectory,
     VZSpiceAgentPortAttachment, VZStorageDeviceConfiguration, VZUSBKeyboardConfiguration,
@@ -26,6 +27,9 @@ use objc2_virtualization::{
 
 /// 多目录共享时统一的 virtiofs 标签。
 const PRIMARY_SHARE_TAG: &str = "share";
+
+/// Rosetta 在 Linux 客户机里的固定挂载标签，客户机据此挂载并注册 binfmt。
+pub const ROSETTA_SHARE_TAG: &str = "rosetta";
 
 /// 子类转父类引用（objc2 的 `extern_class!` 为继承链生成 `Deref`）。
 fn up<'a, T, U>(value: &'a Retained<T>) -> &'a U
@@ -178,6 +182,8 @@ pub fn build(
     }
 
     // ---- 共享目录：virtio-fs ----
+    let mut share_devices: Vec<Retained<VZDirectorySharingDeviceConfiguration>> = Vec::new();
+
     if !spec.shared_dirs.is_empty() {
         let mut keys: Vec<Retained<NSString>> = Vec::new();
         let mut values: Vec<Retained<VZSharedDirectory>> = Vec::new();
@@ -212,12 +218,48 @@ pub fn build(
                 &NSString::from_str(tag),
             )
         };
+        let share_ref: &VZDirectoryShare = up(&multi);
         unsafe {
-            let share_ref: &VZDirectoryShare = up(&multi);
             fs.setShare(Some(share_ref));
-            let device: &VZDirectorySharingDeviceConfiguration = up(&fs);
-            config.setDirectorySharingDevices(&NSArray::from_slice(&[device]));
+            // 子类 → 父类容器：VZDirectorySharingDeviceConfiguration 是 fs 的父类。
+            share_devices.push(Retained::cast_unchecked(fs));
         }
+    }
+
+    // ---- Rosetta：让 Linux 客户机直接跑 x86_64 二进制 ----
+    //
+    // 这是 Parallels / UTM 在 Apple 芯片上最有价值的能力之一：Steam 上的 x86_64
+    // 游戏、只有 amd64 构建的 CLI 工具，不用换客户机架构就能跑。
+    // Rosetta 目录共享走的是 virtiofs 挂载，但只有 Linux 客户机会去用它。
+    if spec.rosetta && spec.os == GuestOs::Linux {
+        if unsafe { VZLinuxRosettaDirectoryShare::availability() }
+            != VZLinuxRosettaAvailability::Installed
+        {
+            return Err(
+                "Rosetta 尚未安装。首次使用需要在终端执行 softwareupdate --install-rosetta"
+                    .to_string(),
+            );
+        }
+        let rosetta = unsafe { VZLinuxRosettaDirectoryShare::initWithError(VZLinuxRosettaDirectoryShare::alloc()) }
+            .map_err(|error| format!("初始化 Rosetta 目录共享失败：{}", ns_error_text(&error)))?;
+        let fs = unsafe {
+            VZVirtioFileSystemDeviceConfiguration::initWithTag(
+                VZVirtioFileSystemDeviceConfiguration::alloc(),
+                &NSString::from_str(ROSETTA_SHARE_TAG),
+            )
+        };
+        let share_ref: &VZDirectoryShare = up(&rosetta);
+        unsafe {
+            fs.setShare(Some(share_ref));
+            // 子类 → 父类容器：VZDirectorySharingDeviceConfiguration 是 fs 的父类。
+            share_devices.push(Retained::cast_unchecked(fs));
+        }
+    }
+
+    if !share_devices.is_empty() {
+        let refs: Vec<&VZDirectorySharingDeviceConfiguration> =
+            share_devices.iter().map(|item| &**item).collect();
+        unsafe { config.setDirectorySharingDevices(&NSArray::from_slice(&refs)) };
     }
 
     // ---- 剪贴板：SPICE agent 走 virtio-console ----

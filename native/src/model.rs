@@ -94,6 +94,10 @@ pub struct VmSpec {
     pub auto_resize: bool,
     #[serde(default = "default_true")]
     pub audio: bool,
+    /// 在 Linux 客户机里暴露 Rosetta，用 arm64 宿主直接跑 x86_64 二进制。
+    /// 只在 Apple 芯片 + Linux 客户机下有意义，其它组合会被引擎忽略。
+    #[serde(default)]
+    pub rosetta: bool,
     #[serde(default = "default_width")]
     pub display_width: u32,
     #[serde(default = "default_height")]
@@ -141,6 +145,12 @@ impl VmSpec {
         }
         if self.display_width < 640 || self.display_height < 480 {
             return Err("初始分辨率不得小于 640×480".to_string());
+        }
+        if self.rosetta && self.arch != "arm64" {
+            return Err("Rosetta 只能在 arm64 客户机上启用".to_string());
+        }
+        if self.rosetta && self.os == GuestOs::Windows {
+            return Err("Rosetta 只适用于 Linux 客户机".to_string());
         }
         for dir in &self.shared_dirs {
             if !std::path::Path::new(&dir.host_path).is_dir() {
@@ -192,6 +202,11 @@ pub struct EngineCaps {
     pub auto_resize: bool,
     pub audio: bool,
     pub snapshots: bool,
+    /// 能否复制一台虚拟机（APFS 上靠写时复制，秒级完成）。
+    pub clone: bool,
+    /// 能否在线扩磁盘（只增不减：稀疏文件扩容是安全的，缩小会丢数据）。
+    pub resize_disk: bool,
+    /// Rosetta 目录共享是否受支持（宿主装没装由运行时再查一次）。
     pub rosetta: bool,
     pub bridged_network: bool,
 }
@@ -206,6 +221,8 @@ impl EngineCaps {
             auto_resize: false,
             audio: false,
             snapshots: false,
+            clone: false,
+            resize_disk: false,
             rosetta: false,
             bridged_network: false,
         }
@@ -281,6 +298,8 @@ pub struct VmCreateInput {
     #[serde(default)]
     pub audio: Option<bool>,
     #[serde(default)]
+    pub rosetta: Option<bool>,
+    #[serde(default)]
     pub display_width: Option<u32>,
     #[serde(default)]
     pub display_height: Option<u32>,
@@ -302,7 +321,23 @@ pub struct VmUpdateInput {
     #[serde(default)]
     pub audio: Option<bool>,
     #[serde(default)]
+    pub rosetta: Option<bool>,
+    #[serde(default)]
     pub installer_path: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VmCloneInput {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VmResizeDiskInput {
+    pub id: String,
+    pub disk_size_gb: u64,
 }

@@ -41,6 +41,9 @@ QEMU 的 TCG 模拟慢一个数量级，而 QEMU + HVF 又拿不到 VZ 那种可
 | 窗口缩放自适应分辨率 | ✅ | ❌ |
 | 音频输出 | ✅ | ✅ |
 | 暂停 / 继续 | ✅ | ❌ |
+| 克隆虚拟机 | ✅ APFS 写时复制，秒级 | ✅ 整盘复制 |
+| 扩容磁盘 | ✅ 只增不减 | ✅ 只增不减 |
+| Rosetta（Linux 客户机跑 x86_64） | ✅ | ❌ |
 | 快照 | ❌（规划中） | ❌ |
 
 **文件选择**：macOS 用 `NSOpenPanel` 拿真实路径（webview 的 `input[type=file]` 在沙箱里
@@ -72,6 +75,34 @@ sudo apt install spice-vdagent   # 或 dnf / pacman 对应包
 
 装 `spice-guest-tools`（含 vdagent）可启用剪贴板；分辨率自适应还需 virtio-gpu 驱动。
 
+**Linux —— 启用 Rosetta（x86_64 转译）**
+
+先在宿主上装一次 Rosetta：
+
+```bash
+softwareupdate --install-rosetta --agree-to-license
+```
+
+建机时打开「Rosetta（x86_64 转译）」，然后在客户机内：
+
+```bash
+sudo mkdir -p /mnt/rosetta
+sudo mount -t virtiofs rosetta /mnt/rosetta
+sudo /mnt/rosetta/rosetta update    # 首次注册
+# 之后 amd64 二进制可直接执行，例如：
+# docker run --platform linux/amd64 hello-world
+```
+
+**扩容磁盘之后**，宿主侧只是块设备变大，客户机里还要自己扩：
+
+```bash
+sudo growpart /dev/vda 1 && sudo resize2fs /dev/vda1   # Linux
+# Windows：磁盘管理 → 右键卷 → 扩展卷
+```
+
+**克隆**走 APFS 写时复制，40GB 逻辑盘实测 139ms、几乎不占额外空间；
+副本只有真正写入才分配块。
+
 ## 数据位置
 
 ```
@@ -99,7 +130,12 @@ mkdir -p ../lib && cp target/release/libotools_vm_native.dylib ../lib/macOS.dyli
 pnpm build               # 前端产物到 dist/
 pnpm pack                # 打 .oplg 到 dist-pack/
 pnpm verify              # 校验包结构
+pnpm smoke               # 原生层冒烟（真动态库 + 真磁盘，18 项断言）
 ```
+
+`pnpm smoke` 直接用 ctypes 调 `otools_plugin_invoke`，不经宿主，
+覆盖建机 / 克隆（校验写时复制确实生效）/ 扩容 / 拒绝缩容 / 删除。
+改 native 后先跑它，再考虑发包。
 
 宿主按平台挑 `lib/macOS.dylib` / `lib/Windows.dll` / `lib/Linux.so`，
 文件名是宿主约定，**不跟随 crate 名**。
@@ -121,7 +157,7 @@ native/src/
   store.rs            # ~/.otools/local/vm 读写
   engine/mod.rs       # Engine trait + 引擎选择
   engine/vz/          # Virtualization.framework 后端
-    config.rs         #   设备组合
+    config.rs         #   设备组合（含 Rosetta 目录共享）
     view.rs           #   NSView 挂载与坐标换算
     dialog.rs         #   NSOpenPanel
   engine/qemu/        # QEMU 后端
