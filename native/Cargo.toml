@@ -1,0 +1,36 @@
+[package]
+name = "otools-vm-native"
+version = "0.1.0"
+edition = "2021"
+description = "OTools VM 原生引擎层：Apple Virtualization.framework 与 QEMU 双后端"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "otools_vm_native"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-app-kit = { version = "0.3", features = [
+    "NSApplication",
+    "NSResponder",
+    "NSView",
+    "NSWindow",
+    "NSGraphics",
+    "NSOpenPanel",
+    "NSSavePanel",
+    "NSPanel",
+] }
+objc2-virtualization = "0.3"
+block2 = "0.6"
+dispatch2 = "0.3"
+
+# cdylib 必须可 unwind：插件 FFI 边界在插件内部捕获 panic，
+# 若 release profile 设成 abort，宿主会整体被杀（见主仓 ot-plugin-ffi 的说明）。
+[profile.release]
+panic = "unwind"

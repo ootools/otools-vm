@@ -1,0 +1,28 @@
+# JavaScript / Vite
+node_modules/
+.pnpm-store/
+dist/
+.vite/
+dist-pack/
+
+# Rust native
+native/target/
+
+# 原生产物：由发布流水线构建，不入库（与主仓 plugins/.gitignore 一致）
+*.dll
+*.dylib
+*.so
+lib/
+
+# Local env
+*.local
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

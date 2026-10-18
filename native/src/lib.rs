@@ -1,0 +1,557 @@
+//! OTools VM 原生层。
+//!
+//! 编译成两种形态：
+//! - `cdylib`：插件市场里以 `lib/macOS.dylib` 等形式被宿主 `libloading` 加载，
+//!   入口是 `otools_plugin_invoke` / `otools_plugin_free`；
+//! - `rlib`：给未来的独立 APP 壳直接引用。
+//!
+//! FFI 边界一律走 [`guard_invoke`]：插件里的 panic 不能跨 DLL 边界 unwind，
+//! 否则宿主整个进程会被 `abort()` 掉。
+
+pub mod engine;
+pub mod model;
+pub mod paths;
+pub mod store;
+
+use std::sync::{Arc, OnceLock};
+
+use serde_json::{json, Value};
+
+use engine::{Engine, ViewRect};
+use model::{
+    EngineInfo, GuestOs, HostInfo, SharedDir, VmCreateInput, VmSpec, VmSummary, VmUpdateInput,
+    VmWorkspace,
+};
+
+static ENGINE: OnceLock<Arc<dyn Engine>> = OnceLock::new();
+
+fn engine() -> &'static Arc<dyn Engine> {
+    ENGINE.get_or_init(|| Arc::from(engine::build_engine()))
+}
+
+// ---------------------------------------------------------------- 命令实现
+
+fn cmd_workspace() -> Result<Value, String> {
+    let engine = engine();
+    let specs = store::list_specs();
+    let mut vms = Vec::with_capacity(specs.len());
+    for spec in specs {
+        vms.push(summary_for(engine.as_ref(), &spec));
+    }
+    let workspace = VmWorkspace {
+        engine: engine.info(),
+        vms,
+        host: host_info(),
+    };
+    serde_json::to_value(workspace).map_err(|error| error.to_string())
+}
+
+fn summary_for(engine: &dyn Engine, spec: &VmSpec) -> VmSummary {
+    let state = if engine.supports(spec) {
+        engine.state(spec)
+    } else {
+        model::VmState::Unavailable
+    };
+    VmSummary {
+        spec: spec.clone(),
+        state,
+        engine: if engine.supports(spec) {
+            engine.info().kind
+        } else {
+            "none".to_string()
+        },
+        last_error: engine.last_error(spec),
+    }
+}
+
+fn cmd_engine_info() -> Result<Value, String> {
+    serde_json::to_value(engine().info()).map_err(|error| error.to_string())
+}
+
+fn cmd_host_info() -> Result<Value, String> {
+    serde_json::to_value(host_info()).map_err(|error| error.to_string())
+}
+
+fn cmd_create(payload: &Value) -> Result<Value, String> {
+    let input: VmCreateInput = serde_json::from_value(payload.clone())
+        .map_err(|error| format!("创建参数解析失败: {}", error))?;
+
+    let engine = engine();
+    let info = engine.info();
+    if !info.available {
+        return Err(info.reason);
+    }
+
+    let id = new_vm_id();
+    let arch = if input.arch.trim().is_empty() {
+        if cfg!(target_arch = "aarch64") { "arm64" } else { "x86_64" }.to_string()
+    } else {
+        input.arch.clone()
+    };
+
+    let disk_path = paths::vm_disk_path(&id);
+    store::create_sparse_disk(&disk_path, input.disk_size_gb)?;
+
+    let shared_dirs: Vec<SharedDir> = input
+        .shared_dirs
+        .into_iter()
+        .enumerate()
+        .map(|(index, dir)| {
+            let tag = if dir.mount_tag.trim().is_empty() {
+                SharedDir::derive_tag(&dir.host_path, index)
+            } else {
+                dir.mount_tag
+            };
+            SharedDir {
+                host_path: dir.host_path,
+                mount_tag: tag,
+                read_only: dir.read_only,
+            }
+        })
+        .collect();
+
+    let spec = VmSpec {
+        id: id.clone(),
+        name: input.name,
+        os: input.os,
+        arch,
+        cpus: input.cpus,
+        memory_mb: input.memory_mb,
+        disk_path: disk_path.to_string_lossy().to_string(),
+        disk_size_gb: input.disk_size_gb,
+        installer_path: input.installer_path.filter(|path| !path.trim().is_empty()),
+        network: model::NetworkMode::Nat,
+        shared_dirs,
+        clipboard: input.clipboard.unwrap_or(true),
+        auto_resize: input.auto_resize.unwrap_or(true),
+        audio: input.audio.unwrap_or(true),
+        display_width: input.display_width.unwrap_or(1280),
+        display_height: input.display_height.unwrap_or(800),
+        notes: String::new(),
+        created_at: now_seconds(),
+    };
+    spec.validate()?;
+    store::save_spec(&spec)?;
+
+    serde_json::to_value(summary_for(engine.as_ref(), &spec)).map_err(|error| error.to_string())
+}
+
+fn cmd_update(payload: &Value) -> Result<Value, String> {
+    let input: VmUpdateInput = serde_json::from_value(payload.clone())
+        .map_err(|error| format!("更新参数解析失败: {}", error))?;
+
+    let engine = engine();
+    let mut spec = store::load_spec(&input.id)?;
+
+    let running = engine.state(&spec);
+    if running.is_busy() || running == model::VmState::Running || running == model::VmState::Paused {
+        return Err("请先关闭虚拟机再修改配置".to_string());
+    }
+
+    spec.name = input.name;
+    spec.cpus = input.cpus;
+    spec.memory_mb = input.memory_mb;
+    spec.shared_dirs = input
+        .shared_dirs
+        .into_iter()
+        .enumerate()
+        .map(|(index, dir)| {
+            let tag = if dir.mount_tag.trim().is_empty() {
+                SharedDir::derive_tag(&dir.host_path, index)
+            } else {
+                dir.mount_tag
+            };
+            SharedDir {
+                host_path: dir.host_path,
+                mount_tag: tag,
+                read_only: dir.read_only,
+            }
+        })
+        .collect();
+    if let Some(value) = input.clipboard {
+        spec.clipboard = value;
+    }
+    if let Some(value) = input.auto_resize {
+        spec.auto_resize = value;
+    }
+    if let Some(value) = input.audio {
+        spec.audio = value;
+    }
+    if let Some(value) = input.installer_path {
+        spec.installer_path = if value.trim().is_empty() { None } else { Some(value) };
+    }
+    if let Some(value) = input.notes {
+        spec.notes = value;
+    }
+    spec.validate()?;
+    store::save_spec(&spec)?;
+
+    serde_json::to_value(summary_for(engine.as_ref(), &spec)).map_err(|error| error.to_string())
+}
+
+fn cmd_delete(payload: &Value) -> Result<Value, String> {
+    let id = read_id(payload)?;
+    let engine = engine();
+    if let Ok(spec) = store::load_spec(&id) {
+        let _ = engine.stop(&spec);
+        let _ = engine.detach_view(&spec);
+    }
+    store::remove_vm_dir(&id)?;
+    Ok(json!({ "ok": true }))
+}
+
+fn cmd_start(payload: &Value) -> Result<Value, String> {
+    let id = read_id(payload)?;
+    let spec = store::load_spec(&id)?;
+    let engine = engine();
+    if !engine.supports(&spec) {
+        return Err(format!(
+            "当前引擎（{}）不支持 {} 架构的客户机",
+            engine.info().label,
+            spec.arch
+        ));
+    }
+    engine.start(&spec)?;
+    Ok(json!({ "ok": true }))
+}
+
+fn cmd_stop(payload: &Value) -> Result<Value, String> {
+    let id = read_id(payload)?;
+    let spec = store::load_spec(&id)?;
+    engine().stop(&spec)?;
+    Ok(json!({ "ok": true }))
+}
+
+fn cmd_pause(payload: &Value) -> Result<Value, String> {
+    let id = read_id(payload)?;
+    let spec = store::load_spec(&id)?;
+    engine().pause(&spec)?;
+    Ok(json!({ "ok": true }))
+}
+
+fn cmd_resume(payload: &Value) -> Result<Value, String> {
+    let id = read_id(payload)?;
+    let spec = store::load_spec(&id)?;
+    engine().resume(&spec)?;
+    Ok(json!({ "ok": true }))
+}
+
+fn cmd_attach_view(payload: &Value) -> Result<Value, String> {
+    let id = read_id(payload)?;
+    let rect = read_rect(payload)?;
+    let spec = store::load_spec(&id)?;
+    engine().attach_view(&spec, rect)?;
+    Ok(json!({ "ok": true }))
+}
+
+fn cmd_update_view_rect(payload: &Value) -> Result<Value, String> {
+    let id = read_id(payload)?;
+    let rect = read_rect(payload)?;
+    let spec = store::load_spec(&id)?;
+    engine().update_view_rect(&spec, rect)?;
+    Ok(json!({ "ok": true }))
+}
+
+fn cmd_detach_view(payload: &Value) -> Result<Value, String> {
+    let id = read_id(payload)?;
+    let spec = store::load_spec(&id)?;
+    engine().detach_view(&spec)?;
+    Ok(json!({ "ok": true }))
+}
+
+fn cmd_pick_folder(payload: &Value) -> Result<Value, String> {
+    let title = payload
+        .get("title")
+        .and_then(|value| value.as_str())
+        .unwrap_or("选择共享目录");
+    pick_path(title, true)
+}
+
+fn cmd_pick_file(payload: &Value) -> Result<Value, String> {
+    let title = payload
+        .get("title")
+        .and_then(|value| value.as_str())
+        .unwrap_or("选择安装镜像");
+    pick_path(title, false)
+}
+
+fn pick_path(title: &str, directory: bool) -> Result<Value, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let picked = if directory {
+            engine::vz::dialog::pick_directory(title)?
+        } else {
+            engine::vz::dialog::pick_file(title)?
+        };
+        Ok(json!({ "path": picked }))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (title, directory);
+        Err("当前平台请手动输入路径".to_string())
+    }
+}
+
+/// 把所有已挂载的原生视图从宿主窗口摘下来。
+fn detach_all_views() {
+    let engine = engine();
+    for spec in store::list_specs() {
+        let _ = engine.detach_view(&spec);
+    }
+}
+
+fn cmd_shutdown() -> Result<Value, String> {
+    if let Some(engine) = ENGINE.get() {
+        engine.shutdown();
+    }
+    Ok(json!({ "ok": true }))
+}
+
+// ---------------------------------------------------------------- 小工具
+
+fn read_id(payload: &Value) -> Result<String, String> {
+    payload
+        .get("id")
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "缺少虚拟机 id".to_string())
+}
+
+fn read_rect(payload: &Value) -> Result<ViewRect, String> {
+    let rect = payload
+        .get("rect")
+        .cloned()
+        .ok_or_else(|| "缺少控制台区域".to_string())?;
+    serde_json::from_value(rect).map_err(|error| format!("控制台区域解析失败: {}", error))
+}
+
+fn now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn new_vm_id() -> String {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_nanos() as u64)
+        .unwrap_or(0);
+    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("vm-{:x}{:02x}", nanos, seq)
+}
+
+fn host_info() -> HostInfo {
+    let total_memory_mb = total_memory_bytes()
+        .map(|bytes| bytes / 1024 / 1024)
+        .unwrap_or(0);
+    let cpus = std::thread::available_parallelism()
+        .map(|value| value.get() as u32)
+        .unwrap_or(4);
+    HostInfo {
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        hostname: std::env::var("HOSTNAME")
+            .or_else(|_| std::env::var("COMPUTERNAME"))
+            .unwrap_or_else(|_| "localhost".to_string()),
+        recommended_cpus: cpus.saturating_sub(2).max(2),
+        recommended_memory_mb: if total_memory_mb == 0 {
+            4096
+        } else {
+            (total_memory_mb / 2).max(2048)
+        },
+        total_memory_mb,
+    }
+}
+
+fn total_memory_bytes() -> Option<u64> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("sysctl")
+            .args(["-n", "hw.memsize"])
+            .output()
+            .ok()?;
+        String::from_utf8(output.stdout).ok()?.trim().parse().ok()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let text = std::fs::read_to_string("/proc/meminfo").ok()?;
+        let line = text.lines().find(|line| line.starts_with("MemTotal:"))?;
+        let kb: u64 = line
+            .split_whitespace()
+            .nth(1)
+            .and_then(|value| value.parse().ok())?;
+        Some(kb * 1024)
+    }
+}
+
+// ---------------------------------------------------------------- 分发
+
+fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
+    match method {
+        "ping" => Ok(json!({ "message": "pong", "engine": engine().info().kind })),
+        "vm_get_workspace" => cmd_workspace(),
+        "vm_engine_info" => cmd_engine_info(),
+        "vm_host_info" => cmd_host_info(),
+        "vm_create" => cmd_create(&payload),
+        "vm_update" => cmd_update(&payload),
+        "vm_delete" => cmd_delete(&payload),
+        "vm_start" => cmd_start(&payload),
+        "vm_stop" => cmd_stop(&payload),
+        "vm_pause" => cmd_pause(&payload),
+        "vm_resume" => cmd_resume(&payload),
+        "vm_attach_view" => cmd_attach_view(&payload),
+        "vm_update_view_rect" => cmd_update_view_rect(&payload),
+        "vm_detach_view" => cmd_detach_view(&payload),
+        "vm_pick_folder" => cmd_pick_folder(&payload),
+        "vm_pick_file" => cmd_pick_file(&payload),
+        "vm_shutdown" => cmd_shutdown(),
+        // 宿主热更新插件前的停机握手：只摘掉挂在宿主窗口上的原生视图，
+        // 正在运行的虚拟机保持不动 —— 更新插件不该顺手杀掉用户的机器。
+        "__otools_shutdown__" => {
+            detach_all_views();
+            Ok(json!({ "ok": true }))
+        }
+        // 宿主会每 200ms 轮询一次；本插件不排队事件，状态由前端主动拉。
+        "poll_events" => Ok(json!({ "events": [] })),
+        other => Err(format!("Unknown method: {}", other)),
+    }
+}
+
+// ---------------------------------------------------------------- FFI
+
+/// 在 FFI 边界内捕获 panic，返回宿主可解析的 JSON。
+fn guard_invoke<F>(
+    input_ptr: *const u8,
+    input_len: usize,
+    output_len: *mut usize,
+    logic: F,
+) -> *mut u8
+where
+    F: FnOnce(&[u8]) -> Result<Value, String>,
+{
+    if input_ptr.is_null() || output_len.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    let input = unsafe { std::slice::from_raw_parts(input_ptr, input_len) };
+
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| logic(input)));
+
+    let response = match outcome {
+        Ok(Ok(value)) => {
+            if value.get("ok").is_some() {
+                value
+            } else {
+                json!({ "ok": true, "data": value })
+            }
+        }
+        Ok(Err(error)) => json!({ "ok": false, "error": error }),
+        Err(payload) => {
+            let message = payload
+                .downcast_ref::<&str>()
+                .map(|text| (*text).to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".to_string());
+            eprintln!("[vm] 插件内部 panic: {}", message);
+            json!({ "ok": false, "error": format!("插件内部错误: {}", message), "panic": true })
+        }
+    };
+
+    let mut bytes = serde_json::to_vec(&response)
+        .unwrap_or_else(|_| br#"{"ok":false,"error":"serialize failed"}"#.to_vec());
+    if bytes.is_empty() {
+        bytes.extend_from_slice(b"{}");
+    }
+    let len = bytes.len();
+    unsafe {
+        *output_len = len;
+    }
+    let ptr = bytes.as_mut_ptr();
+    std::mem::forget(bytes);
+    ptr
+}
+
+fn invoke_impl(input: &[u8]) -> Result<Value, String> {
+    let parsed: Value = serde_json::from_slice(input)
+        .map_err(|error| format!("请求解析失败: {}", error))?;
+    let method = parsed
+        .get("method")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let payload = parsed.get("payload").cloned().unwrap_or(Value::Null);
+    dispatch(&method, payload)
+}
+
+#[no_mangle]
+pub extern "C" fn otools_plugin_invoke(
+    input_ptr: *const u8,
+    input_len: usize,
+    output_len: *mut usize,
+) -> *mut u8 {
+    guard_invoke(input_ptr, input_len, output_len, invoke_impl)
+}
+
+#[no_mangle]
+pub extern "C" fn otools_plugin_free(ptr: *mut u8, len: usize) {
+    if ptr.is_null() {
+        return;
+    }
+    unsafe {
+        drop(Vec::from_raw_parts(ptr, len, len));
+    }
+}
+
+/// 供独立 APP 壳直接调用的 Rust API（不经 JSON）。
+pub fn workspace_json() -> String {
+    match cmd_workspace() {
+        Ok(value) => value.to_string(),
+        Err(error) => json!({ "error": error }).to_string(),
+    }
+}
+
+pub fn engine_info() -> EngineInfo {
+    engine().info()
+}
+
+#[allow(dead_code)]
+fn guest_label(os: GuestOs) -> &'static str {
+    match os {
+        GuestOs::Windows => "windows",
+        GuestOs::Linux => "linux",
+        GuestOs::Macos => "macos",
+        GuestOs::Other => "other",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unknown_method_is_rejected() {
+        assert!(dispatch("nope", Value::Null).is_err());
+    }
+
+    #[test]
+    fn id_is_required() {
+        assert!(read_id(&json!({})).is_err());
+        assert_eq!(read_id(&json!({ "id": " abc " })).unwrap(), "abc");
+    }
+
+    #[test]
+    fn share_tag_is_guest_safe() {
+        // 全非 ASCII 目录名：退回 shareN，保证客户机侧标签唯一且可用。
+        assert_eq!(SharedDir::derive_tag("/Users/me/我的 项目", 0), "share1");
+        // 含大写与空格：小写化并替换分隔符，追加序号避免重名。
+        assert_eq!(SharedDir::derive_tag("/Users/me/My Projects", 0), "my-projects-1");
+        let tag = SharedDir::derive_tag("/Users/me/我的 项目", 2);
+        assert!(tag
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-'));
+    }
+}

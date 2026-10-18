@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="OTools VM">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4f6bff"/>
+      <stop offset="55%" stop-color="#6b4bff"/>
+      <stop offset="100%" stop-color="#a03cff"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.98"/>
+      <stop offset="100%" stop-color="#dfe6ff" stop-opacity="0.92"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bg)"/>
+
+  <!-- 显示器外框 -->
+  <rect x="96" y="112" width="320" height="216" rx="26" fill="none" stroke="#ffffff" stroke-width="20" stroke-opacity="0.95"/>
+
+  <!-- 屏幕内容：一块客户机桌面 -->
+  <rect x="124" y="140" width="264" height="160" rx="12" fill="url(#screen)" fill-opacity="0.16"/>
+  <rect x="140" y="156" width="96" height="12" rx="6" fill="#ffffff" fill-opacity="0.85"/>
+  <rect x="140" y="182" width="150" height="10" rx="5" fill="#ffffff" fill-opacity="0.55"/>
+  <rect x="140" y="204" width="120" height="10" rx="5" fill="#ffffff" fill-opacity="0.4"/>
+
+  <!-- 播放三角：启动 -->
+  <path d="M300 196 L360 232 L300 268 Z" fill="#ffffff"/>
+
+  <!-- 底座 -->
+  <path d="M232 328 L232 372 L280 372 L280 328 Z" fill="#ffffff" fill-opacity="0.95"/>
+  <rect x="176" y="368" width="160" height="22" rx="11" fill="#ffffff" fill-opacity="0.95"/>
+</svg>
