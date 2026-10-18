@@ -40,6 +40,10 @@ struct VzInstance {
     /// 独立窗口模式下的窗口（内嵌模式为 None）。
     window: Option<Retained<NSWindow>>,
     error: Arc<Mutex<String>>,
+    /// 构建该实例用的规格。用于判断「是否需要重建」：VZ 配置在 init 之后不可变，
+    /// 改完设置重启时必须重建；但 start 与 attach_view 互斥重建会互相拆台，
+    /// 所以改为「配置没变就复用」，只在规格确实变化时才销毁旧实例。
+    spec: VmSpec,
 }
 
 thread_local! {
@@ -162,12 +166,10 @@ impl Engine for VzEngine {
     fn start(&self, spec: &VmSpec) -> Result<(), String> {
         let spec = spec.clone();
         on_main(move || -> Result<(), String> {
-            // 每次启动都重建 machine：CPU / 内存 / 共享目录改动写在 VmSpec 里，
-            // 而 VZ 的配置在 init 之后不可变。缓存旧实例会让「改完设置重启」失效。
-            INSTANCES.with(|cell| {
-                cell.borrow_mut().remove(&spec.id);
-            });
-            ensure_instance(&spec)?;
+            // 复用或重建一个「可启动」实例：规格没变就复用；若机器已停掉
+            // （VZ 机器只能启动一次）则销毁重建，否则 start 会因 canStart 失败而报错。
+            // attach_view 挂上去的视图在规格没变时也会被完整保留。
+            ensure_instance(&spec, true)?;
             INSTANCES.with(|cell| {
                 let mut instances = cell.borrow_mut();
                 let instance = instances
@@ -292,12 +294,9 @@ impl Engine for VzEngine {
     fn attach_view(&self, spec: &VmSpec, rect: ViewRect) -> Result<(), String> {
         let spec = spec.clone();
         on_main(move || -> Result<(), String> {
-            // 每次启动都重建 machine：CPU / 内存 / 共享目录改动写在 VmSpec 里，
-            // 而 VZ 的配置在 init 之后不可变。缓存旧实例会让「改完设置重启」失效。
-            INSTANCES.with(|cell| {
-                cell.borrow_mut().remove(&spec.id);
-            });
-            ensure_instance(&spec)?;
+            // 复用已有实例（同一规格），不要销毁正在运行的机器或已挂好的视图。
+            // attach_view 路径传 rebuild_dead=false：绝不破坏已经运行/挂好的实例。
+            ensure_instance(&spec, false)?;
             INSTANCES.with(|cell| {
                 let mut instances = cell.borrow_mut();
                 let instance = instances
@@ -398,12 +397,44 @@ fn resize_view(instance: &mut VzInstance, rect: ViewRect) -> Result<(), String> 
 }
 
 /// 按需创建 machine（不启动）。视图可以在启动前就挂上去，用户先看到「等待启动」。
-fn ensure_instance(spec: &VmSpec) -> Result<(), String> {
+///
+/// 复用策略由 `rebuild_dead` 控制，因为 Apple Virtualization.framework 的虚拟机
+/// 对象**只能启动一次**：停掉之后必须销毁重建，否则 `canStart` 永远返回 false。
+///
+/// - `rebuild_dead = false`（attach_view 路径）：规格没变就直接复用，绝不破坏
+///   正在运行的机器或已经挂好的视图——这正是修复「窗口一闪而过」的关键：
+///   start 建好运行中的机器后，状态变 Running 触发前端 attach，如果这里再 remove
+///   重建一台停止的机器，运行中的实例就被拆掉，poll 看到 Stopped 又会 detach，窗口闪退。
+/// - `rebuild_dead = true`（start 路径）：规格没变时——
+///     * 运行中/启动中 → 复用（随后 start 自带「已在运行」拦截，不会误删）；
+///     * 从未启动的停止机器（等待启动期建立的）→ 复用并启动；
+///     * 已停掉的死机器（stop→restart）→ 销毁重建，否则无法再次启动。
+///   规格变了（停机改设置后重启）→ 总是销毁重建。
+fn ensure_instance(spec: &VmSpec, rebuild_dead: bool) -> Result<(), String> {
     INSTANCES.with(|cell| {
         let mut instances = cell.borrow_mut();
-        if instances.contains_key(&spec.id) {
-            return Ok(());
+        if let Some(existing) = instances.get(&spec.id) {
+            if existing.spec == *spec {
+                if !rebuild_dead {
+                    // attach_view：保留运行中的机器与已挂视图。
+                    return Ok(());
+                }
+                let state = unsafe { existing.machine.state() };
+                if state == VZVirtualMachineState::Running
+                    || state == VZVirtualMachineState::Starting
+                {
+                    // 运行中/启动中：保留，交给 start 的「已在运行」检查拦截。
+                    return Ok(());
+                }
+                if unsafe { existing.machine.canStart() } {
+                    // 从未启动过的停止机器（等待启动期建立的）：直接复用再启动。
+                    return Ok(());
+                }
+                // 落到下面：已停掉的死机器，必须重建。
+            }
         }
+        // 首次、规格变化、或 start 遇上死机器：丢掉旧实例重建。
+        instances.remove(&spec.id);
         let nvram = paths::vm_nvram_path(&spec.id);
         let nvram_text = nvram.to_string_lossy().to_string();
         let built = config::build(spec, &nvram_text)?;
@@ -423,6 +454,7 @@ fn ensure_instance(spec: &VmSpec) -> Result<(), String> {
                 view: None,
                 window: None,
                 error: Arc::new(Mutex::new(String::new())),
+                spec: spec.clone(),
             },
         );
         Ok(())

@@ -36,7 +36,7 @@ impl Default for NetworkMode {
 ///
 /// `mount_tag` 是客户机侧挂载名：Linux 下
 /// `mount -t virtiofs <tag> /mnt/<tag>`。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SharedDir {
     pub host_path: String,
@@ -66,7 +66,7 @@ impl SharedDir {
 }
 
 /// 一台虚拟机的完整规格。存到 `~/.otools/vm/vms/<id>/vm.json`。
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VmSpec {
     pub id: String,

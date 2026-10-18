@@ -1,6 +1,6 @@
 {
   "name": "otools-vm",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "OTools VM — 基于 Apple Virtualization.framework 的桌面虚拟机插件，支持 Windows / Linux 图形虚拟机、共享目录、剪贴板与窗口自适应分辨率。",
