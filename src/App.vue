@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { t } from '@/i18n';
 import { isPluginRuntime, isTauriRuntime } from '@/sdk/runtime';
-import { vmStore } from '@/state/vm-store';
+import { MIN_HOST_VERSION, vmStore } from '@/state/vm-store';
 import VmCloneDialog from '@/components/VmCloneDialog.vue';
 import VmConsole from '@/components/VmConsole.vue';
 import VmCreateDialog from '@/components/VmCreateDialog.vue';
@@ -18,6 +18,9 @@ const settingsVisible = ref(false);
 const cloneVisible = ref(false);
 const resizeVisible = ref(false);
 const selected = computed(() => vmStore.selected.value);
+
+/** 宿主缺 virtualization 权限（版本过旧）。 */
+const needsHostUpgrade = vmStore.needsHostUpgrade;
 
 /**
  * 浏览器里没有 native 库，虚拟机功能不可能工作。
@@ -97,6 +100,16 @@ onBeforeUnmount(() => {
       />
 
       <section class="vm-main">
+        <!-- 宿主版本过旧时，一进来就告诉他原因，而不是等点了启动才报错。 -->
+        <el-alert
+          v-if="needsHostUpgrade"
+          class="vm-host-alert"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="t('vm.engine.needsUpgrade')"
+          :description="t('vm.error.hostOutdated', { version: MIN_HOST_VERSION })"
+        />
         <VmToolbar
           v-if="selected"
           :vm="selected"
@@ -163,6 +176,11 @@ body {
   margin: 0;
   font-size: 13px;
   line-height: 1.7;
+}
+
+.vm-host-alert {
+  margin: 10px 12px 0;
+  flex: none;
 }
 
 .vm-main {

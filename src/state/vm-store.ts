@@ -38,6 +38,19 @@ const selected = computed(() => state.vms.find((vm) => vm.id === state.selectedI
 
 const engineReady = computed(() => Boolean(state.engine?.available));
 
+/**
+ * 宿主是否缺 macOS 虚拟化权限。
+ *
+ * 该权限属于进程，插件无法自带；宿主 0.8.3 及更早版本没有它。
+ * 这是「宿主版本过旧」而不是「插件配置错误」，所以单独暴露给 UI 做提示。
+ */
+const needsHostUpgrade = computed(
+  () => Boolean(state.engine?.available) && state.engine?.hostEntitled === false,
+);
+
+/** 第一个带 virtualization 权限的宿主版本。 */
+export const MIN_HOST_VERSION = '0.8.4';
+
 async function load(): Promise<void> {
   state.loading = true;
   try {
@@ -159,6 +172,7 @@ export const vmStore = {
   state,
   selected,
   engineReady,
+  needsHostUpgrade,
   load,
   refreshStates,
   select,

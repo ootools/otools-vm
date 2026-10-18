@@ -54,6 +54,11 @@ int main(int argc, const char *argv[]) {
 
     NSDictionary *ping = Call(@"ping", nil);
     printf("ping: %s\n", [ping[@"data"][@"message"] UTF8String] ?: "(nil)");
+
+    // 宿主权限探测必须在**带权限**的进程里验证：这里应打印 hostEntitled=1。
+    NSDictionary *info = Call(@"vm_engine_info", nil);
+    printf("hostEntitled: %d（本进程已签 virtualization，期望 1）\n",
+           [info[@"data"][@"hostEntitled"] boolValue]);
     fflush(stdout);
 
     NSDictionary *created = Call(@"vm_create", @{

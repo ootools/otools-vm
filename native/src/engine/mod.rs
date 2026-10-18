@@ -80,6 +80,7 @@ impl Engine for NoopEngine {
             label: "不可用".to_string(),
             reason: self.reason.clone(),
             version: String::new(),
+            host_entitled: false,
             caps: EngineCaps::unsupported(),
         }
     }

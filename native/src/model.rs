@@ -239,6 +239,11 @@ pub struct EngineInfo {
     /// 不可用原因（前端直接展示）。
     pub reason: String,
     pub version: String,
+    /// 宿主进程是否具备 `com.apple.security.virtualization` 权限。
+    ///
+    /// 该权限属于进程、插件无法自带，宿主版本过旧时会缺失。
+    /// 前端据此提前提示「请升级 OTools」，而不是等用户点启动才失败。
+    pub host_entitled: bool,
     pub caps: EngineCaps,
 }
 

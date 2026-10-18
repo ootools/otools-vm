@@ -71,6 +71,8 @@ export interface EngineInfo {
   label: string;
   reason: string;
   version: string;
+  /** 宿主进程是否具备 macOS 虚拟化权限；false 说明宿主版本过旧。 */
+  hostEntitled: boolean;
   caps: EngineCaps;
 }
 

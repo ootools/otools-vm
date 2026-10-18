@@ -99,6 +99,25 @@ impl VzEngine {
     }
 }
 
+/// 探测宿主进程是否具备 virtualization 权限。
+///
+/// 手法：拿一个**空配置**去 `validateWithError`。
+/// - 缺权限 → 报 `com.apple.security.virtualization`；
+/// - 有权限 → 报 `bootLoader is nil`（正常的空配置报错）。
+/// 两者错误文本可区分，所以不需要真的建一台虚拟机就能判断。
+///
+/// 代价很低（建一个空配置对象即丢弃），但必须走主线程 —— VZ 对象不是 Send。
+fn probe_host_entitlement() -> bool {
+    on_main(|| {
+        let config = unsafe { VZVirtualMachineConfiguration::new() };
+        match unsafe { config.validateWithError() } {
+            Ok(()) => true,
+            Err(error) => !config::ns_error_text(&error)
+                .contains("com.apple.security.virtualization"),
+        }
+    })
+}
+
 fn macos_version() -> String {
     std::process::Command::new("sw_vers")
         .arg("-productVersion")
@@ -118,6 +137,7 @@ impl Engine for VzEngine {
             label: "Apple Virtualization".to_string(),
             reason: String::new(),
             version: self.version.clone(),
+            host_entitled: probe_host_entitlement(),
             caps: EngineCaps {
                 native_view: true,
                 shared_dirs: true,

@@ -204,6 +204,8 @@ impl Engine for QemuEngine {
                 reason: "未找到 qemu-system-*。安装 QEMU 后重启宿主即可启用跨平台虚拟机。"
                     .to_string(),
                 version: String::new(),
+                // QEMU 走子进程，不需要 macOS 虚拟化权限。
+                host_entitled: true,
                 caps: EngineCaps::unsupported(),
             };
         }
@@ -213,6 +215,7 @@ impl Engine for QemuEngine {
             label: "QEMU".to_string(),
             reason: String::new(),
             version: self.version.clone(),
+            host_entitled: true,
             caps: EngineCaps {
                 native_view: false,
                 shared_dirs: true,
