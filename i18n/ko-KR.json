@@ -136,5 +136,7 @@
   "vm.snapshot.failed": "일시 중지/재개 실패",
   "vm.snapshot.size": "일시 중지 파일 크기",
   "vm.snapshot.timeout": "시간이 초과되었습니다. 나중에 다시 시도하세요",
-  "vm.snapshot.discard": "일시 중지 파일 삭제"
+  "vm.snapshot.discard": "일시 중지 파일 삭제",
+  "vm.console.suspended": "일시 중지됨",
+  "vm.console.suspendedHint": "머신이 중지되어 디스크에 저장되었습니다. \"재개\"로 계속하세요. 앱을 닫거나 재부팅해도 유지됩니다."
 }

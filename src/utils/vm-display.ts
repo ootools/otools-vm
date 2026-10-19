@@ -41,10 +41,19 @@ export const stateTagType = (state: VmState): 'success' | 'warning' | 'danger' |
 export const isBusyState = (state: VmState): boolean =>
   state === 'starting' || state === 'resuming' || state === 'pausing' || state === 'stopping';
 
+/**
+ * 是否该**保留原生 console 视图**（即客户机有实时画面可看）。
+ *
+ * ⚠️ `paused` 故意不算 active：VZ 的 console 视图是宿主窗口级、盖在 webview
+ * 之上的原生覆盖层，挂起时客户机图形设备被冻结/挂起，这一层会留下残影甚至
+ * 变成整块黑屏，把插件自己的工具栏和别的 TAB 一起盖住。所以挂起后一律摘掉
+ * 原生视图，改由 HTML 显示「已挂起」占位；点「继续」回到 running 再挂回来。
+ *
+ * `stopping` 仍算 active：它只存在极短时间，保留最后一帧让关机过程不闪。
+ */
 export const isActiveState = (state: VmState): boolean =>
   state === 'starting' ||
   state === 'running' ||
-  state === 'paused' ||
   state === 'pausing' ||
   state === 'resuming' ||
   state === 'stopping';

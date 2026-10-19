@@ -199,7 +199,17 @@ pub fn focus(view: &VZVirtualMachineView) {
     }
 }
 
+/// 把视图从宿主窗口摘下来。
+///
+/// ⚠️ 顺序很重要：**先断开 machine 引用，再移出父视图**。反过来（或只做
+/// `removeFromSuperview`）会让 view 在仍持有运行中 machine 的情况下被父视图
+/// 释放，随后 autorelease pool 回收时 `objc_release` 访问到失效的 VZ 内部
+/// 连接，直接 SIGSEGV（实测 KERN_INVALID_ADDRESS，栈落在
+/// `AutoreleasePoolPage::releaseUntil`）。
 pub fn detach(view: &VZVirtualMachineView) {
+    // 顺序：先断开 machine 绑定，再把视图移出父视图。
+    // 反过来会让视图在仍持有运行中 machine 的情况下被释放，VZ 内部对象
+    // 随后在 autorelease 阶段访问失效指针 → SIGSEGV。
     unsafe { view.setVirtualMachine(None) };
     view.removeFromSuperview();
 }

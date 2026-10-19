@@ -136,5 +136,7 @@
   "vm.snapshot.failed": "Anhalten/Fortsetzen fehlgeschlagen",
   "vm.snapshot.size": "Größe der Zustandsdatei",
   "vm.snapshot.timeout": "Zeitüberschreitung, bitte erneut versuchen",
-  "vm.snapshot.discard": "Zustandsdatei löschen"
+  "vm.snapshot.discard": "Zustandsdatei löschen",
+  "vm.console.suspended": "Angehalten",
+  "vm.console.suspendedHint": "Die Maschine ist pausiert und auf der Festplatte gesichert. Mit „Fortsetzen\" weiterarbeiten — App-Beenden oder Neustart ist unproblematisch."
 }

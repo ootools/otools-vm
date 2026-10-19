@@ -3,6 +3,7 @@ import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, 
 import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
 import { VmApi } from '@/services/vm-api';
+import { vmStore } from '@/state/vm-store';
 import type { VmSummary, ViewRect } from '@/types/vm';
 import { isActiveState } from '@/utils/vm-display';
 
@@ -13,6 +14,7 @@ const attachError = ref('');
 const attachedId = ref('');
 let resizeObserver: ResizeObserver | null = null;
 let rafHandle = 0;
+let offBeforeSuspend: (() => void) | null = null;
 
 const active = computed(() => isActiveState(props.vm.state));
 
@@ -157,6 +159,10 @@ onMounted(() => {
   // 宿主切到其它插件 TAB 时会把本插件面板隐藏，文档随之变 hidden：借此摘掉原生
   // 视图，避免它悬浮遮挡其它插件；重新可见时 reconcile 会重新挂载。
   document.addEventListener('visibilitychange', onVisibilityChange);
+  // 挂起前由 store 回调过来，先把原生视图摘干净再让 VZ 去存盘。
+  // 走这里（而不是让 store 直接调 VmApi.detachView）是为了同步 attachedId，
+  // 否则本地状态会以为视图还挂着。
+  offBeforeSuspend = vmStore.onBeforeSuspend((id: string) => detach(id));
   // 挂载时虚拟机可能已经在运行（例如从设置页返回），补一次挂载。
   void reconcile();
 });
@@ -170,6 +176,8 @@ onBeforeUnmount(async () => {
   resizeObserver = null;
   window.removeEventListener('resize', scheduleSync);
   document.removeEventListener('visibilitychange', onVisibilityChange);
+  offBeforeSuspend?.();
+  offBeforeSuspend = null;
   if (rafHandle) {
     window.cancelAnimationFrame(rafHandle);
     rafHandle = 0;
@@ -190,6 +198,16 @@ const mountCommand = computed(() => {
 const showEngineFallback = computed(() => props.vm.engine === 'qemu');
 const showError = computed(() => Boolean(props.vm.lastError));
 
+/** 挂起态专用占位文案：机器还在，只是被冻结了。 */
+const suspended = computed(() => props.vm.state === 'paused');
+const placeholderTitle = computed(() =>
+  suspended.value ? t('vm.console.suspended') : t('vm.console.waiting'),
+);
+const placeholderHint = computed(() =>
+  suspended.value ? t('vm.console.suspendedHint') : t('vm.console.waitingHint'),
+);
+const placeholderIcon = computed(() => (suspended.value ? '⏸' : '⏻'));
+
 const copyMountCommand = async (): Promise<void> => {
   if (!mountCommand.value) {
     return;
@@ -207,9 +225,9 @@ const copyMountCommand = async (): Promise<void> => {
   <div class="vm-console">
     <div ref="stageRef" class="vm-console-stage" :class="{ live: active }">
       <div v-if="!active" class="vm-console-placeholder">
-        <span class="vm-console-placeholder-icon">⏻</span>
-        <h3>{{ t('vm.console.waiting') }}</h3>
-        <p>{{ t('vm.console.waitingHint') }}</p>
+        <span class="vm-console-placeholder-icon">{{ placeholderIcon }}</span>
+        <h3>{{ placeholderTitle }}</h3>
+        <p>{{ placeholderHint }}</p>
       </div>
     </div>
 

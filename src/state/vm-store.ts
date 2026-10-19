@@ -185,11 +185,38 @@ async function waitSnapshot(id: string): Promise<{ ok: boolean; error: string }>
   return { ok: false, error: t('vm.snapshot.timeout') };
 }
 
+/**
+ * 挂起前摘原生视图的钩子。
+ *
+ * 为什么不直接在这里调 `VmApi.detachView`：`VmConsole` 自己记着 `attachedId`，
+ * 绕开它去摘会让它以为视图还在，后续 `updateViewRect` 反复报错。所以由
+ * VmConsole 把自己「摘视图」的方法注册进来，状态更准确。
+ */
+const beforeSuspendHooks = new Set<(id: string) => Promise<void> | void>();
+
+function onBeforeSuspend(hook: (id: string) => Promise<void> | void): () => void {
+  beforeSuspendHooks.add(hook);
+  return () => beforeSuspendHooks.delete(hook);
+}
+
 /** 挂起：把整机（含内存）落到磁盘并停住。关 App / 重启 Mac 都不丢。 */
 async function saveState(id: string): Promise<boolean> {
   snapshotBusy.value = true;
   state.lastActionError = '';
   try {
+    // 先把原生 console 视图摘掉，再做挂起。
+    //
+    // 原生视图是宿主窗口级、盖在 webview 之上的覆盖层。挂起时 VZ 会冻结并保存
+    // 图形设备状态，这一层会留下残影/黑块，把工具栏甚至别的 TAB 一起盖住
+    // （「暂停后怎么有遮挡了」就是这么来的）。先摘掉既避免残影，也避免在
+    // VZ 存盘过程中去动它的视图（半保存状态最危险）。
+    for (const hook of beforeSuspendHooks) {
+      try {
+        await hook(id);
+      } catch {
+        // 单个钩子失败不该挡住挂起。
+      }
+    }
     await VmApi.saveState(id);
     const result = await waitSnapshot(id);
     // 无论成败都要刷新：暂停这一步可能已经发生，状态会变。
@@ -360,6 +387,7 @@ export const vmStore = {
   restoreState,
   continueRun,
   discardState,
+  onBeforeSuspend,
   create,
   update,
   remove,

@@ -136,5 +136,7 @@
   "vm.snapshot.failed": "Error al suspender/reanudar",
   "vm.snapshot.size": "Tamaño del archivo de suspensión",
   "vm.snapshot.timeout": "La operación agotó el tiempo, inténtalo de nuevo",
-  "vm.snapshot.discard": "Eliminar archivo de suspensión"
+  "vm.snapshot.discard": "Eliminar archivo de suspensión",
+  "vm.console.suspended": "Suspendida",
+  "vm.console.suspendedHint": "La máquina está pausada y guardada en disco. Pulsa Reanudar para continuar; cerrar OTools o reiniciar no supone problema."
 }

@@ -136,5 +136,7 @@
   "vm.snapshot.failed": "Suspend/resume failed",
   "vm.snapshot.size": "Suspend file size",
   "vm.snapshot.timeout": "Suspend/resume timed out, please retry",
-  "vm.snapshot.discard": "Delete suspend file"
+  "vm.snapshot.discard": "Delete suspend file",
+  "vm.console.suspended": "Suspended",
+  "vm.console.suspendedHint": "The machine is paused and saved to disk. Click Resume to continue — closing OTools or rebooting is fine."
 }

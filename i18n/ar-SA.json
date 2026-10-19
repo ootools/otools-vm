@@ -136,5 +136,7 @@
   "vm.snapshot.failed": "فشل التعليق/المتابعة",
   "vm.snapshot.size": "حجم ملف التعليق",
   "vm.snapshot.timeout": "انتهت المهلة، يرجى المحاولة لاحقًا",
-  "vm.snapshot.discard": "حذف ملف التعليق"
+  "vm.snapshot.discard": "حذف ملف التعليق",
+  "vm.console.suspended": "معلّق",
+  "vm.console.suspendedHint": "الجهاز متوقف ومحفوظ على القرص. اضغط «متابعة» للاستمرار؛ إغلاق التطبيق أو إعادة التشغيل لا يؤثر."
 }

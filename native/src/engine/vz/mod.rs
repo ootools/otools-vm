@@ -37,6 +37,11 @@ struct VzInstance {
     /// 那时若配置已被释放，`VZSpiceAgentPortAttachment` 就是野指针。
     _config: Retained<VZVirtualMachineConfiguration>,
     view: Option<Retained<VZVirtualMachineView>>,
+    /// 已摘下来、但还不能安全释放的视图（见 `detach_view`）。
+    ///
+    /// VZVirtualMachineView 从运行中的 machine 摘下后立刻 dealloc 会在
+    /// autorelease pool 回收时崩溃；先寄存于此，等实例整体销毁再一起放掉。
+    parked_views: Vec<Retained<VZVirtualMachineView>>,
     /// 独立窗口模式下的窗口（内嵌模式为 None）。
     window: Option<Retained<NSWindow>>,
     error: Arc<Mutex<String>>,
@@ -88,6 +93,22 @@ impl SnapshotPhase {
 
 thread_local! {
     static INSTANCES: RefCell<HashMap<String, VzInstance>> = RefCell::new(HashMap::new());
+}
+
+// 延迟释放池。
+//
+// VZ / AppKit 的对象（`VZVirtualMachine`、`VZVirtualMachineView`、`NSWindow`）
+// 一旦从「运行中的 machine」上成组拆下来就地 drop，Objective-C 侧会在紧接着的
+// autorelease pool 回收里访问到已失效的内部指针，直接 SIGSEGV（实测栈落在
+// `AutoreleasePoolPage::releaseUntil`）。把要丢的视图/窗口先攒在这里、不立刻
+// 释放，就能避开这个时机问题。
+thread_local! {
+    static PARKED: RefCell<Vec<Retained<objc2::runtime::AnyObject>>> = RefCell::new(Vec::new());
+}
+
+/// 把对象挂进延迟释放池（必须在主线程调用）。
+fn park_on_main(object: Retained<objc2::runtime::AnyObject>) {
+    PARKED.with(|cell| cell.borrow_mut().push(object));
 }
 
 /// 把闭包送到主线程执行并取回结果。
@@ -267,6 +288,12 @@ fn start_save_write(id: &str, path_text: &str) -> Result<(), String> {
         // 成功：机器停在 Paused —— 这正是「挂起」要的效果。
         // 用户下次点「继续」恢复运行；关掉 App / 重启 Mac 后再点「继续」
         // 也能从这份存档接着用。
+        //
+        // ⚠️ 这里**不要**去 detach 视图。实测在 VZ 的 save 回调栈里释放
+        // VZVirtualMachineView 的对象，会在 autorelease pool 回收时
+        // SIGSEGV（objc_release → AutoreleasePoolPage::releaseUntil），
+        // 整个宿主进程崩溃。视图摘除由前端在**发起挂起之前**完成
+        // （见 vm-store 的 beforeSuspend hook），那时机器还没被暂停，安全。
         with_instance(&id_for_cb, |instance| {
             instance.phase = SnapshotPhase::Idle;
             clear_snapshot_error(instance);
@@ -657,6 +684,33 @@ impl Engine for VzEngine {
             // restore 要求机器处于「从未启动」的状态：VZ 只能把存档灌进一台
             // 尚未 start 的机器。所以先丢掉现存的实例，再用**同一份配置**
             // （同一 platform id / MAC）重建一台全新的。
+            //
+            // ⚠️ 顺序很关键：必须先 requestStop 让旧 machine 把 NVRAM / 磁盘的
+            // 文件句柄放掉，再移除实例。否则新实例去打开同一个 nvram.bin 时会
+            // 撞上 `Invalid virtual machine configuration. The boot loader is invalid.`
+            // （实测：旧 machine 还没释放，新机器就打不开 varstore）。
+            INSTANCES.with(|cell| {
+                let mut instances = cell.borrow_mut();
+                if let Some(instance) = instances.get_mut(&spec.id) {
+                    if unsafe { instance.machine.canRequestStop() } {
+                        let _ = unsafe { instance.machine.requestStopWithError() };
+                    }
+                    if unsafe { instance.machine.canStop() } {
+                        let handler = RcBlock::new(|_error: *mut NSError| {});
+                        unsafe { instance.machine.stopWithCompletionHandler(&handler) };
+                    }
+                }
+            });
+            // 给 VZ 一点时间真正停下来并关闭文件句柄。
+            if let Some(machine) = machine_of(&spec.id) {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+                while unsafe { machine.state() } != VZVirtualMachineState::Stopped
+                    && std::time::Instant::now() < deadline
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
+
             INSTANCES.with(|cell| {
                 let mut instances = cell.borrow_mut();
                 if let Some(mut old) = instances.remove(&spec.id) {
@@ -664,7 +718,16 @@ impl Engine for VzEngine {
                         view::detach(&created);
                     }
                     if let Some(window) = old.window.take() {
-                        window.close();
+                        // 不 close：关闭会连带销毁视图的窗口上下文，
+                        // VZ 内部对象随后自释放时崩溃（见 detach_view 注释）。
+                        window.orderOut(None);
+                        unsafe { park_on_main(Retained::cast_unchecked(window)) };
+                    }
+                    // 视图进延迟池；machine 此刻已 Stopped，可以正常释放。
+                    unsafe {
+                        for view in old.parked_views.drain(..) {
+                            park_on_main(Retained::cast_unchecked(view));
+                        }
                     }
                 }
             });
@@ -765,9 +828,23 @@ impl Engine for VzEngine {
                 if let Some(instance) = instances.get_mut(&id) {
                     if let Some(created) = instance.view.take() {
                         view::detach(&created);
+                        // 先断开 machine、移出父视图，然后**不立即 drop**：
+                        // 把 Retained 暂存到 parked_views，等实例销毁时再统一释放。
+                        //
+                        // 原因：VZVirtualMachineView 刚从运行中的 machine 上摘下时，
+                        // 内部还挂着 VZ 的连接对象；此刻 dealloc 会在 autorelease
+                        // pool 回收阶段 objc_release 到失效指针 → SIGSEGV
+                        // （实测 KERN_INVALID_ADDRESS，栈在 AutoreleasePoolPage）。
+                        instance.parked_views.push(created);
                     }
-                    if let Some(window) = instance.window.take() {
-                        window.close();
+                    // 独立窗口模式（宿主窗口拿不到时的降级路径）：只把窗口藏起来。
+                    //
+                    // 不能 `close()` —— 关闭窗口会连带销毁视图的窗口上下文，随后
+                    // VZ 内部对象自释放时崩溃（本机实测：找不到宿主窗口 → 走独立
+                    // 窗口 → detach 时 close → SIGSEGV）。隐藏即可，窗口本身由
+                    // instance 持有，实例销毁时统一释放。
+                    if let Some(window) = instance.window.as_ref() {
+                        window.orderOut(None);
                     }
                 }
                 Ok(())
@@ -866,6 +943,7 @@ fn ensure_instance(spec: &VmSpec, rebuild_dead: bool) -> Result<(), String> {
                 _retained: built.retained,
                 _config: built.config,
                 view: None,
+                parked_views: Vec::new(),
                 window: None,
                 error: Arc::new(Mutex::new(String::new())),
                 spec: spec.clone(),

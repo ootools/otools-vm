@@ -136,5 +136,7 @@
   "vm.snapshot.failed": "一時停止／再開に失敗しました",
   "vm.snapshot.size": "一時停止ファイルのサイズ",
   "vm.snapshot.timeout": "タイムアウトしました。後でもう一度お試しください",
-  "vm.snapshot.discard": "一時停止ファイルを削除"
+  "vm.snapshot.discard": "一時停止ファイルを削除",
+  "vm.console.suspended": "一時停止中",
+  "vm.console.suspendedHint": "マシンは停止してディスクに保存されています。「再開」で続けられます。アプリ終了や再起動でも失われません。"
 }

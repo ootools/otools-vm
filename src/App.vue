@@ -49,6 +49,12 @@ const poll = (): void => {
   if (vmStore.state.busy || createVisible.value || cloneVisible.value || resizeVisible.value) {
     return;
   }
+  // 挂起/继续期间不要插手刷新：store 自己在轮询任务进度，且这两个操作会
+  // 连续改变机器状态（running → pausing → paused → …）。外部再并发刷新会让
+  // 状态来回抖，控制台跟着 attach/detach 反复挂载，造成遮挡和闪烁。
+  if (vmStore.snapshotBusy.value) {
+    return;
+  }
   void vmStore.refreshStates();
 };
 

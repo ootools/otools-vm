@@ -136,5 +136,7 @@
   "vm.snapshot.failed": "挂起操作失败",
   "vm.snapshot.size": "挂起文件大小",
   "vm.snapshot.timeout": "挂起/恢复超时，请稍后重试",
-  "vm.snapshot.discard": "删除挂起文件"
+  "vm.snapshot.discard": "删除挂起文件",
+  "vm.console.suspended": "已挂起",
+  "vm.console.suspendedHint": "虚拟机已暂停并保存到磁盘。点上方「继续」接着用，关掉 OTools 或重启电脑都不会丢。"
 }
