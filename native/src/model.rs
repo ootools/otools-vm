@@ -189,6 +189,50 @@ impl VmState {
     }
 }
 
+/// 存档式快照能力。
+///
+/// Apple VZ 的 `validateSaveRestoreSupport` 是**按配置**判定的（同一台机器，
+/// 换掉显卡/设备组合结果就可能变），所以不能只在引擎级给一个 bool，必须跟着
+/// 具体 `VmSpec` 走。前端据此决定「存档/恢复」按钮是否可点、以及为什么不可点。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotSupport {
+    /// 该配置能否存盘。
+    pub supported: bool,
+    /// 不能时的原因（直接展示给用户，来自 VZ 的错误文案）。
+    pub reason: String,
+    /// 是否已有一份可恢复的存档文件。
+    pub has_snapshot: bool,
+    /// 存档文件大小（字节），无存档时为 0。
+    pub snapshot_bytes: u64,
+    /// 存档创建时间（Unix 秒），无存档时为 0。
+    pub snapshot_at: i64,
+    /// 快照任务当前阶段：`idle` / `savingPausing` / `savingWriting` /
+    /// `restoring` / `restoringResuming`。
+    ///
+    /// 存/恢复是异步链（save = pause→落盘；restore = load→resume），命令立即返回，
+    /// 前端靠轮询这个字段显示进度。
+    #[serde(default)]
+    pub phase: String,
+    /// 最近一次快照失败原因；成功或未开始时为空。
+    #[serde(default)]
+    pub error: String,
+}
+
+impl SnapshotSupport {
+    pub fn unsupported() -> Self {
+        Self {
+            supported: false,
+            reason: "当前引擎不支持存档式快照".to_string(),
+            has_snapshot: false,
+            snapshot_bytes: 0,
+            snapshot_at: 0,
+            phase: "idle".to_string(),
+            error: String::new(),
+        }
+    }
+}
+
 /// 引擎能力矩阵。前端据此灰掉不支持的开关，而不是让用户点了才报错。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

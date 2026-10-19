@@ -123,5 +123,18 @@
   "vm.resize.success": "Disk grown to {size} GB",
   "vm.unit.cpu": "cores",
   "vm.unit.mb": "MB",
-  "vm.unit.gb": "GB"
+  "vm.unit.gb": "GB",
+  "vm.snapshot.save": "Suspend",
+  "vm.snapshot.restore": "Resume",
+  "vm.snapshot.saveHint": "Save the whole machine (including memory) to disk and stop it; survives closing the app or rebooting, pick up with Resume",
+  "vm.snapshot.restoreHint": "Resume from the suspended state (works even after closing the app or rebooting)",
+  "vm.snapshot.needRunning": "Start the machine before suspending",
+  "vm.snapshot.unsupported": "Suspend is not supported for this configuration",
+  "vm.snapshot.lastAt": "Last suspended",
+  "vm.snapshot.saved": "Suspended — use Resume to continue",
+  "vm.snapshot.restored": "Resumed from suspended state",
+  "vm.snapshot.failed": "Suspend/resume failed",
+  "vm.snapshot.size": "Suspend file size",
+  "vm.snapshot.timeout": "Suspend/resume timed out, please retry",
+  "vm.snapshot.discard": "Delete suspend file"
 }

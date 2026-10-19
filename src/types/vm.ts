@@ -142,3 +142,44 @@ export interface VmResizeDiskInput {
   id: string;
   diskSizeGb: number;
 }
+
+/**
+ * 存档式快照能力。
+ *
+ * VZ 是按**配置**判定能否存盘的（设备组合变了结果就可能变），所以这是逐台查的，
+ * 不是引擎级开关。
+ */
+export interface SnapshotSupport {
+  /** 当前配置能否存盘。false 时 UI 应禁用「存档」并展示 reason。 */
+  supported: boolean;
+  /** 不能存盘的原因（VZ 原始文案）。 */
+  reason: string;
+  /** 是否已有一份可恢复的存档。 */
+  hasSnapshot: boolean;
+  /** 存档文件大小（字节）。 */
+  snapshotBytes: number;
+  /** 存档创建时间（Unix 秒）。 */
+  snapshotAt: number;
+  /**
+   * 任务阶段：`idle` / `savingPausing` / `savingWriting` /
+   * `restoring` / `restoringResuming`。
+   *
+   * 存/恢复是异步链（save = pause→落盘；restore = load→resume），命令立即返回，
+   * 前端靠轮询这个字段显示进度。
+   */
+  phase: SnapshotPhase;
+  /** 最近一次快照失败原因；成功或未开始时为空。 */
+  error: string;
+}
+
+export type SnapshotPhase =
+  | 'idle'
+  | 'savingPausing'
+  | 'savingWriting'
+  | 'restoring'
+  | 'restoringResuming';
+
+/** 是否为「正在存档/恢复」的中间阶段。 */
+export function isSnapshotBusy(phase: SnapshotPhase | undefined): boolean {
+  return Boolean(phase && phase !== 'idle');
+}

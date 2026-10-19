@@ -9,6 +9,7 @@ import type {
   VmUpdateInput,
   VmWorkspace,
   RosettaStatus,
+  SnapshotSupport,
   ViewRect,
 } from '@/types/vm';
 
@@ -31,6 +32,15 @@ export const VmApi = {
   stop: (id: string) => invokeNative<{ ok: boolean }>('vm_stop', { id }),
   pause: (id: string) => invokeNative<{ ok: boolean }>('vm_pause', { id }),
   resume: (id: string) => invokeNative<{ ok: boolean }>('vm_resume', { id }),
+
+  /** 该虚拟机能否存档（VZ 按配置判定，不是全局开关）。 */
+  getSnapshotSupport: (id: string) =>
+    invokeNative<SnapshotSupport>('vm_snapshot_support', { id }),
+  /** 存档：运行中会先自动暂停，再整机落盘。 */
+  saveState: (id: string) => invokeNative<SnapshotSupport>('vm_save_state', { id }),
+  /** 恢复：从存档还原整机状态并自动继续运行。 */
+  restoreState: (id: string) => invokeNative<SnapshotSupport>('vm_restore_state', { id }),
+  discardState: (id: string) => invokeNative<{ ok: boolean }>('vm_discard_state', { id }),
 
   attachView: (id: string, rect: ViewRect) =>
     invokeNative<{ ok: boolean }>('vm_attach_view', { id, rect }),

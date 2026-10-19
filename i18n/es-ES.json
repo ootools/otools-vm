@@ -123,5 +123,18 @@
   "vm.resize.success": "Disco ampliado a {size} GB",
   "vm.unit.cpu": "núcleos",
   "vm.unit.mb": "MB",
-  "vm.unit.gb": "GB"
+  "vm.unit.gb": "GB",
+  "vm.snapshot.save": "Suspender",
+  "vm.snapshot.restore": "Reanudar",
+  "vm.snapshot.saveHint": "Guarda toda la máquina (incluida la memoria) en disco y la detiene; sobrevive al cerrar la app o reiniciar",
+  "vm.snapshot.restoreHint": "Reanuda desde el estado suspendido (funciona tras cerrar la app o reiniciar)",
+  "vm.snapshot.needRunning": "Inicia la máquina antes de suspender",
+  "vm.snapshot.unsupported": "Esta configuración no admite suspensión",
+  "vm.snapshot.lastAt": "Última suspensión",
+  "vm.snapshot.saved": "Suspendida — usa Reanudar para continuar",
+  "vm.snapshot.restored": "Reanudada desde el estado suspendido",
+  "vm.snapshot.failed": "Error al suspender/reanudar",
+  "vm.snapshot.size": "Tamaño del archivo de suspensión",
+  "vm.snapshot.timeout": "La operación agotó el tiempo, inténtalo de nuevo",
+  "vm.snapshot.discard": "Eliminar archivo de suspensión"
 }

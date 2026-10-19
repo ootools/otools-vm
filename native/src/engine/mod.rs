@@ -6,7 +6,7 @@
 //!
 //! 引擎之间只共享 `VmSpec` 与 `VmState`，不共享实现细节。
 
-use crate::model::{EngineCaps, EngineInfo, VmSpec, VmState};
+use crate::model::{EngineCaps, EngineInfo, SnapshotSupport, VmSpec, VmState};
 use serde::Serialize;
 
 pub mod qemu;
@@ -56,6 +56,38 @@ pub trait Engine: Send + Sync {
     fn resume(&self, spec: &VmSpec) -> Result<(), String>;
     fn state(&self, spec: &VmSpec) -> VmState;
     fn last_error(&self, spec: &VmSpec) -> String;
+
+    /// 存档式快照（把整机 CPU+RAM 状态落到磁盘）。默认不支持。
+    ///
+    /// 语义（VZ 原生存盘）：
+    /// - `save_state`：要求机器处于 Paused；写出存档文件后机器状态不变（仍 Paused）。
+    /// - `restore_state`：要求机器处于 Stopped 且从未启动；成功后机器进入 Paused，
+    ///   实现会继续 resume 回 Running。
+    ///
+    /// 这两者是**异步链**（save = pause→落盘；restore = load→resume），命令只发起
+    /// 并立即返回，进度与结果由 `snapshot_phase` / `snapshot_error` 汇报。
+    fn snapshot_support(&self, _spec: &VmSpec) -> SnapshotSupport {
+        SnapshotSupport::unsupported()
+    }
+    fn save_state(&self, _spec: &VmSpec) -> Result<(), String> {
+        Err("当前引擎不支持存档式快照".to_string())
+    }
+    fn restore_state(&self, _spec: &VmSpec) -> Result<(), String> {
+        Err("当前引擎不支持存档式快照".to_string())
+    }
+    /// 快照任务当前阶段：`idle` / `savingPausing` / `savingWriting` /
+    /// `restoring` / `restoringResuming`。前端据此显示进度并判断何时该刷新。
+    fn snapshot_phase(&self, _spec: &VmSpec) -> String {
+        "idle".to_string()
+    }
+    /// 最近一次快照失败原因（成功或未开始时为空）。
+    fn snapshot_error(&self, _spec: &VmSpec) -> String {
+        String::new()
+    }
+    /// 删除已存下的快照文件（连同「有存档」的状态标志）。
+    fn discard_state(&self, _spec: &VmSpec) -> Result<(), String> {
+        Ok(())
+    }
 
     /// 把客户机画面挂到宿主窗口的指定矩形。
     fn attach_view(&self, spec: &VmSpec, rect: ViewRect) -> Result<(), String>;

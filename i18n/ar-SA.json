@@ -123,5 +123,18 @@
   "vm.resize.success": "تم توسيع القرص إلى {size} غ.ب",
   "vm.unit.cpu": "أنوية",
   "vm.unit.mb": "م.ب",
-  "vm.unit.gb": "غ.ب"
+  "vm.unit.gb": "غ.ب",
+  "vm.snapshot.save": "تعليق",
+  "vm.snapshot.restore": "متابعة",
+  "vm.snapshot.saveHint": "احفظ حالة الجهاز بالكامل (بما في ذلك الذاكرة) على القرص وأوقفه؛ تبقى بعد إغلاق التطبيق أو إعادة التشغيل",
+  "vm.snapshot.restoreHint": "تابع من الحالة المعلّقة (تعمل حتى بعد إغلاق التطبيق أو إعادة التشغيل)",
+  "vm.snapshot.needRunning": "ابدأ الجهاز الظاهري أولاً",
+  "vm.snapshot.unsupported": "التعليق غير مدعوم لهذا الإعداد",
+  "vm.snapshot.lastAt": "آخر تعليق",
+  "vm.snapshot.saved": "تم التعليق — استخدم «متابعة» للاستمرار",
+  "vm.snapshot.restored": "تمت المتابعة من الحالة المعلّقة",
+  "vm.snapshot.failed": "فشل التعليق/المتابعة",
+  "vm.snapshot.size": "حجم ملف التعليق",
+  "vm.snapshot.timeout": "انتهت المهلة، يرجى المحاولة لاحقًا",
+  "vm.snapshot.discard": "حذف ملف التعليق"
 }

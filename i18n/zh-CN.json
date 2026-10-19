@@ -123,5 +123,18 @@
   "vm.resize.success": "磁盘已扩容到 {size} GB",
   "vm.unit.cpu": "核",
   "vm.unit.mb": "MB",
-  "vm.unit.gb": "GB"
+  "vm.unit.gb": "GB",
+  "vm.snapshot.save": "挂起",
+  "vm.snapshot.restore": "继续",
+  "vm.snapshot.saveHint": "把整机状态（含内存）存到磁盘并停住；关掉 App 或重启电脑都不丢，下次点「继续」接着用",
+  "vm.snapshot.restoreHint": "从挂起状态继续运行（关过 App / 重启过电脑也能用）",
+  "vm.snapshot.needRunning": "请先启动虚拟机再挂起",
+  "vm.snapshot.unsupported": "当前配置不支持挂起",
+  "vm.snapshot.lastAt": "上次挂起",
+  "vm.snapshot.saved": "已挂起，下次点「继续」接着用",
+  "vm.snapshot.restored": "已从挂起状态继续",
+  "vm.snapshot.failed": "挂起操作失败",
+  "vm.snapshot.size": "挂起文件大小",
+  "vm.snapshot.timeout": "挂起/恢复超时，请稍后重试",
+  "vm.snapshot.discard": "删除挂起文件"
 }

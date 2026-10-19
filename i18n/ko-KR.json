@@ -123,5 +123,18 @@
   "vm.resize.success": "디스크를 {size} GB로 확장했습니다",
   "vm.unit.cpu": "코어",
   "vm.unit.mb": "MB",
-  "vm.unit.gb": "GB"
+  "vm.unit.gb": "GB",
+  "vm.snapshot.save": "일시 중지",
+  "vm.snapshot.restore": "재개",
+  "vm.snapshot.saveHint": "머신 전체(메모리 포함)를 디스크에 저장하고 중지합니다. 앱을 닫거나 재부팅해도 유지됩니다",
+  "vm.snapshot.restoreHint": "일시 중지 상태에서 재개합니다 (앱 종료·재부팅 후에도 가능)",
+  "vm.snapshot.needRunning": "중지하려면 먼저 가상 머신을 시작하세요",
+  "vm.snapshot.unsupported": "이 구성에서는 일시 중지를 지원하지 않습니다",
+  "vm.snapshot.lastAt": "마지막 일시 중지",
+  "vm.snapshot.saved": "일시 중지되었습니다 — \"재개\"로 계속하세요",
+  "vm.snapshot.restored": "일시 중지 상태에서 재개했습니다",
+  "vm.snapshot.failed": "일시 중지/재개 실패",
+  "vm.snapshot.size": "일시 중지 파일 크기",
+  "vm.snapshot.timeout": "시간이 초과되었습니다. 나중에 다시 시도하세요",
+  "vm.snapshot.discard": "일시 중지 파일 삭제"
 }

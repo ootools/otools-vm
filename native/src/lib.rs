@@ -240,6 +240,53 @@ fn cmd_resume(payload: &Value) -> Result<Value, String> {
     Ok(json!({ "ok": true }))
 }
 
+/// 存档式快照能力：该配置能不能存、有没有现成存档、当前任务进度。
+///
+/// 逐台判定，因为 VZ 的 `validateSaveRestoreSupport` 是按配置算的
+/// （设备组合变了结果就可能变）；进度也挂在这里，前端一个轮询就够。
+fn cmd_snapshot_support(payload: &Value) -> Result<Value, String> {
+    let id = read_id(payload)?;
+    let spec = store::load_spec(&id)?;
+    let engine = engine();
+    let support = if engine.supports(&spec) {
+        engine.snapshot_support(&spec)
+    } else {
+        model::SnapshotSupport::unsupported()
+    };
+    serde_json::to_value(support).map_err(|error| error.to_string())
+}
+
+/// 发起存档。**立即返回**，进度与结果看 `vm_snapshot_support` 的 phase/error。
+fn cmd_save_state(payload: &Value) -> Result<Value, String> {
+    let id = read_id(payload)?;
+    let spec = store::load_spec(&id)?;
+    let engine = engine();
+    if !engine.supports(&spec) {
+        return Err(format!("当前引擎（{}）不支持该虚拟机", engine.info().label));
+    }
+    engine.save_state(&spec)?;
+    serde_json::to_value(engine.snapshot_support(&spec)).map_err(|error| error.to_string())
+}
+
+/// 发起恢复。**立即返回**，进度与结果看 `vm_snapshot_support` 的 phase/error。
+fn cmd_restore_state(payload: &Value) -> Result<Value, String> {
+    let id = read_id(payload)?;
+    let spec = store::load_spec(&id)?;
+    let engine = engine();
+    if !engine.supports(&spec) {
+        return Err(format!("当前引擎（{}）不支持该虚拟机", engine.info().label));
+    }
+    engine.restore_state(&spec)?;
+    serde_json::to_value(engine.snapshot_support(&spec)).map_err(|error| error.to_string())
+}
+
+fn cmd_discard_state(payload: &Value) -> Result<Value, String> {
+    let id = read_id(payload)?;
+    let spec = store::load_spec(&id)?;
+    engine().discard_state(&spec)?;
+    Ok(json!({ "ok": true }))
+}
+
 fn cmd_attach_view(payload: &Value) -> Result<Value, String> {
     let id = read_id(payload)?;
     let rect = read_rect(payload)?;
@@ -471,6 +518,10 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
         "vm_stop" => cmd_stop(&payload),
         "vm_pause" => cmd_pause(&payload),
         "vm_resume" => cmd_resume(&payload),
+        "vm_snapshot_support" => cmd_snapshot_support(&payload),
+        "vm_save_state" => cmd_save_state(&payload),
+        "vm_restore_state" => cmd_restore_state(&payload),
+        "vm_discard_state" => cmd_discard_state(&payload),
         "vm_attach_view" => cmd_attach_view(&payload),
         "vm_update_view_rect" => cmd_update_view_rect(&payload),
         "vm_detach_view" => cmd_detach_view(&payload),

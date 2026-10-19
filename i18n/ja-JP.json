@@ -123,5 +123,18 @@
   "vm.resize.success": "ディスクを {size} GB に拡張しました",
   "vm.unit.cpu": "コア",
   "vm.unit.mb": "MB",
-  "vm.unit.gb": "GB"
+  "vm.unit.gb": "GB",
+  "vm.snapshot.save": "一時停止",
+  "vm.snapshot.restore": "再開",
+  "vm.snapshot.saveHint": "マシン全体（メモリ含む）をディスクに保存して停止します。アプリ終了や再起動後も復元できます",
+  "vm.snapshot.restoreHint": "一時停止した状態から再開します（アプリ終了・再起動後も可）",
+  "vm.snapshot.needRunning": "一時停止する前に仮想マシンを起動してください",
+  "vm.snapshot.unsupported": "この構成では一時停止できません",
+  "vm.snapshot.lastAt": "前回の一時停止",
+  "vm.snapshot.saved": "一時停止しました — 「再開」で続けられます",
+  "vm.snapshot.restored": "一時停止状態から再開しました",
+  "vm.snapshot.failed": "一時停止／再開に失敗しました",
+  "vm.snapshot.size": "一時停止ファイルのサイズ",
+  "vm.snapshot.timeout": "タイムアウトしました。後でもう一度お試しください",
+  "vm.snapshot.discard": "一時停止ファイルを削除"
 }

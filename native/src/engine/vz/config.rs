@@ -7,16 +7,19 @@
 use crate::model::{GuestOs, VmSpec};
 use objc2::rc::Retained;
 use objc2::AnyThread;
-use objc2_foundation::{NSArray, NSDictionary, NSError, NSString, NSURL};
+use objc2_foundation::{NSArray, NSData, NSDictionary, NSError, NSString, NSURL};
 use objc2_virtualization::{
     VZAudioDeviceConfiguration, VZDirectoryShare, VZDirectorySharingDeviceConfiguration,
     VZDiskImageStorageDeviceAttachment, VZEFIBootLoader, VZEFIVariableStore,
     VZEFIVariableStoreInitializationOptions, VZEntropyDeviceConfiguration,
+    VZGenericMachineIdentifier, VZGenericPlatformConfiguration,
     VZGraphicsDeviceConfiguration, VZHostAudioOutputStreamSink, VZKeyboardConfiguration,
     VZConsoleDeviceConfiguration, VZLinuxRosettaAvailability,
     VZLinuxRosettaDirectoryShare,
+    VZMACAddress,
     VZMultipleDirectoryShare, VZNATNetworkDeviceAttachment, VZNetworkDeviceConfiguration,
-    VZPointingDeviceConfiguration, VZSerialPortAttachment, VZSharedDirectory,
+    VZPlatformConfiguration, VZPointingDeviceConfiguration, VZSerialPortAttachment,
+    VZSharedDirectory,
     VZSpiceAgentPortAttachment, VZStorageDeviceConfiguration, VZUSBKeyboardConfiguration,
     VZUSBScreenCoordinatePointingDeviceConfiguration, VZVirtualMachineConfiguration,
     VZVirtioBlockDeviceConfiguration, VZVirtioConsoleDeviceConfiguration,
@@ -115,6 +118,56 @@ pub struct BuiltConfig {
     pub retained: Vec<Retained<objc2::runtime::AnyObject>>,
 }
 
+/// 读写「构建期必须保持稳定的身份」：通用平台 machineIdentifier 与网卡 MAC。
+///
+/// 为什么必须持久化：VZ 在每次构建配置时都为这两者**随机生成新值**（实测
+/// MAC 三次构建三个值、machineIdentifier 70 字节随机）。`restoreMachineStateFromURL`
+/// 会校验「当前配置」与「存档时配置」是否兼容，身份一变就报
+/// `VZErrorRestore ... invalid argument`——所以不持久化的话，存档**永远**无法恢复。
+fn load_identity(vm_id: &str) -> (Retained<VZGenericMachineIdentifier>, Retained<VZMACAddress>) {
+    let dir = crate::paths::vm_dir(vm_id);
+    let platform_path = crate::paths::vm_machine_id_path(vm_id);
+    let mac_path = crate::paths::vm_mac_path(vm_id);
+
+    let machine_id = std::fs::read(&platform_path)
+        .ok()
+        .and_then(|bytes| {
+            let data = NSData::with_bytes(&bytes);
+            unsafe { VZGenericMachineIdentifier::initWithDataRepresentation(
+                VZGenericMachineIdentifier::alloc(),
+                &data,
+            ) }
+        })
+        .unwrap_or_else(|| {
+            let fresh = unsafe { VZGenericMachineIdentifier::init(VZGenericMachineIdentifier::alloc()) };
+            unsafe {
+                let data = fresh.dataRepresentation();
+                let _ = std::fs::create_dir_all(&dir);
+                let _ = std::fs::write(&platform_path, data.to_vec());
+            }
+            fresh
+        });
+
+    let mac = std::fs::read_to_string(&mac_path)
+        .ok()
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+        .and_then(|text| unsafe {
+            VZMACAddress::initWithString(VZMACAddress::alloc(), &NSString::from_str(&text))
+        })
+        .unwrap_or_else(|| {
+            let fresh = unsafe { VZMACAddress::randomLocallyAdministeredAddress() };
+            unsafe {
+                let text = fresh.string().to_string();
+                let _ = std::fs::create_dir_all(&dir);
+                let _ = std::fs::write(&mac_path, text);
+            }
+            fresh
+        });
+
+    (machine_id, mac)
+}
+
 /// 构造完整配置。**必须在主线程调用**（VZ 对象不是 Send）。
 pub fn build(spec: &VmSpec, nvram_path: &str) -> Result<BuiltConfig, String> {
     spec.validate()?;
@@ -124,6 +177,15 @@ pub fn build(spec: &VmSpec, nvram_path: &str) -> Result<BuiltConfig, String> {
     }
 
     let config = unsafe { VZVirtualMachineConfiguration::new() };
+
+    // ---- 平台身份：必须持久化，否则存档无法跨会话恢复 ----
+    let (machine_id, mac) = load_identity(&spec.id);
+    let platform = unsafe { VZGenericPlatformConfiguration::new() };
+    unsafe {
+        platform.setMachineIdentifier(&machine_id);
+        let platform_ref: &VZPlatformConfiguration = up(&platform);
+        config.setPlatform(platform_ref);
+    }
 
     // ---- 引导：EFI（ARM Windows / Linux 通用）----
     let store = build_variable_store(nvram_path)?;
@@ -154,10 +216,13 @@ pub fn build(spec: &VmSpec, nvram_path: &str) -> Result<BuiltConfig, String> {
     unsafe { config.setStorageDevices(&NSArray::from_slice(&disk_refs)) };
 
     // ---- 网络：NAT ----
+    // MAC 必须是持久化的固定值（随身份一起读写）：VZ 默认每次构建都随机生成，
+    // 那样跨进程 restore 会因配置不兼容而失败（见 load_identity 注释）。
     let network = unsafe { VZVirtioNetworkDeviceConfiguration::new() };
     let attachment = unsafe { VZNATNetworkDeviceAttachment::new() };
     unsafe {
         network.setAttachment(Some(&attachment));
+        network.setMACAddress(&mac);
         let device: &VZNetworkDeviceConfiguration = up(&network);
         config.setNetworkDevices(&NSArray::from_slice(&[device]));
     }
@@ -298,6 +363,13 @@ pub fn build(spec: &VmSpec, nvram_path: &str) -> Result<BuiltConfig, String> {
     // 实测：换成 file-handle 附件就正常，说明问题在「容器用错」而不是对象生命周期。
     let mut console_ports: Vec<Retained<VZVirtioConsolePortConfiguration>> = Vec::new();
     let mut retained: Vec<Retained<objc2::runtime::AnyObject>> = Vec::new();
+    // 平台对象与身份标识也一并持有：VZ 在 start/restore 之后仍会回读配置里的
+    // platform，提前释放同样会变成野指针（与 SPICE agent 同一类问题）。
+    unsafe {
+        retained.push(Retained::cast_unchecked(machine_id.clone()));
+        retained.push(Retained::cast_unchecked(mac.clone()));
+        retained.push(Retained::cast_unchecked(platform.clone()));
+    }
     if spec.clipboard {
         let spice = unsafe { VZSpiceAgentPortAttachment::new() };
         let port = unsafe { VZVirtioConsolePortConfiguration::new() };

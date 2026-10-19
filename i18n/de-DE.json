@@ -123,5 +123,18 @@
   "vm.resize.success": "Festplatte auf {size} GB vergrößert",
   "vm.unit.cpu": "Kerne",
   "vm.unit.mb": "MB",
-  "vm.unit.gb": "GB"
+  "vm.unit.gb": "GB",
+  "vm.snapshot.save": "Anhalten",
+  "vm.snapshot.restore": "Fortsetzen",
+  "vm.snapshot.saveHint": "Gesamten Rechnerzustand (inkl. Speicher) auf die Festplatte schreiben und anhalten; übersteht App-Beenden und Neustart",
+  "vm.snapshot.restoreHint": "Aus dem angehaltenen Zustand fortsetzen (auch nach App-Beenden oder Neustart)",
+  "vm.snapshot.needRunning": "Bitte zuerst die virtuelle Maschine starten",
+  "vm.snapshot.unsupported": "Anhalten wird für diese Konfiguration nicht unterstützt",
+  "vm.snapshot.lastAt": "Zuletzt angehalten",
+  "vm.snapshot.saved": "Angehalten — mit „Fortsetzen\" weiter",
+  "vm.snapshot.restored": "Aus angehaltenem Zustand fortgesetzt",
+  "vm.snapshot.failed": "Anhalten/Fortsetzen fehlgeschlagen",
+  "vm.snapshot.size": "Größe der Zustandsdatei",
+  "vm.snapshot.timeout": "Zeitüberschreitung, bitte erneut versuchen",
+  "vm.snapshot.discard": "Zustandsdatei löschen"
 }

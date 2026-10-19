@@ -43,6 +43,29 @@ pub fn vm_log_path(id: &str) -> PathBuf {
     vm_dir(id).join("vm.log")
 }
 
+/// 存档式快照文件（VZ 的 `.vzvmsave`，内含整机 CPU+RAM+设备状态）。
+///
+/// 单个文件、不可增量；恢复成功后 VZ 不会自动删除，由插件决定保留还是丢弃。
+pub fn vm_snapshot_path(id: &str) -> PathBuf {
+    vm_dir(id).join("state.vzvmsave")
+}
+
+/// 客户机身份：`VZGenericMachineIdentifier` 的 70 字节序列化。
+///
+/// **必须持久化**：VZ 每次新建 `VZGenericPlatformConfiguration` 都会随机生成
+/// 新身份，身份变了存档就无法恢复（restore 报 "invalid argument"）。
+pub fn vm_machine_id_path(id: &str) -> PathBuf {
+    vm_dir(id).join("machine.id")
+}
+
+/// 网卡 MAC 地址。
+///
+/// **同样必须持久化**：`VZVirtioNetworkDeviceConfiguration` 每次构建都会随机
+/// 生成 MAC，与存档里的设备状态对不上时 restore 同样失败。
+pub fn vm_mac_path(id: &str) -> PathBuf {
+    vm_dir(id).join("mac.txt")
+}
+
 /// 插件 id 只允许安全字符，避免路径穿越。
 fn sanitize_id(id: &str) -> String {
     let cleaned: String = id
