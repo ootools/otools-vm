@@ -24,6 +24,13 @@ pub struct ViewRect {
     /// 页面 devicePixelRatio，用于换算 backing store。
     #[serde(default = "default_scale")]
     pub scale: f64,
+    /// 页面视口尺寸（window.innerWidth/Height）。宿主顶部有原生标题栏覆盖区时，
+    /// web 视口高度会小于 NSView 高度，须用视口高做翻转基准（否则原生视图会上移
+    /// 这段标题栏 inset、盖住顶部工具栏）。
+    #[serde(default)]
+    pub viewport_width: f64,
+    #[serde(default)]
+    pub viewport_height: f64,
 }
 
 fn default_scale() -> f64 {

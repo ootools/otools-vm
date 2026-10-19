@@ -97,6 +97,9 @@ export interface ViewRect {
   width: number;
   height: number;
   scale: number;
+  /** 页面视口尺寸（window.innerWidth/Height）：原生端据此抵消宿主顶部标题栏 inset。 */
+  viewportWidth?: number;
+  viewportHeight?: number;
 }
 
 export interface VmCreateInput {

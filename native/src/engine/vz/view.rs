@@ -82,21 +82,25 @@ fn is_webview_class(view: &NSView) -> bool {
 /// `parent`（contentView）里的真实位置，再做纵向翻转，自动消化宿主顶部
 /// chrome / inset；找不到 webview 时退化为「webview == 整个 contentView」的旧算法。
 fn frame_in_parent(parent: &NSView, webview: Option<&NSView>, rect: ViewRect) -> NSRect {
-    let (origin_x, webview_top_from_bottom) = match webview {
+    // webview 在 parent(contentView) 里的左下原点与高度。
+    let (wx, wy, webview_h) = match webview {
         Some(w) => unsafe {
             let in_parent = parent.convertRect_fromView(w.frame(), w.superview().as_deref());
-            (
-                in_parent.origin.x,
-                in_parent.origin.y + in_parent.size.height,
-            )
+            (in_parent.origin.x, in_parent.origin.y, in_parent.size.height)
         },
-        None => (0.0, parent.bounds().size.height),
+        None => (0.0, 0.0, parent.bounds().size.height),
     };
-    // 舞台顶边距 parent 底部 = webview 顶 - rect.y；再往下减 rect.height 得到原点的 y。
-    let top = webview_top_from_bottom - rect.y;
-    let y = top - rect.height;
+    // 翻转基准用「web 视口高」而非父视图高：宿主顶部原生标题栏覆盖区使 web 视口
+    // (innerHeight) 小于 NSView 高，视口底边贴着 webview 底边。按视口高翻转即可
+    // 自动抵消这段顶部 inset；缺 viewportHeight 时退回 webview 高度。
+    let base_h = if rect.viewport_height > 0.0 {
+        rect.viewport_height
+    } else {
+        webview_h
+    };
+    let y = wy + base_h - rect.y - rect.height;
     NSRect::new(
-        NSPoint::new(origin_x + rect.x, y),
+        NSPoint::new(wx + rect.x, y),
         NSSize::new(rect.width.max(1.0), rect.height.max(1.0)),
     )
 }

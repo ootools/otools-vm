@@ -19,8 +19,10 @@ const active = computed(() => isActiveState(props.vm.state));
 /**
  * 控制台区域在页面里的矩形。
  *
- * 单位是 CSS 像素：在 webview 缩放为 1 时与 macOS point 一一对应。
- * 原生视图由宿主窗口承载，坐标原点同为窗口内容区左上角。
+ * 单位为 CSS 像素（webview 缩放 1 时 == macOS point，左上原点）。插件是宿主
+ * webview 的顶层文档（非 iframe），所以 getBoundingClientRect 即顶层窗口坐标。
+ * 额外带上视口尺寸：原生端用 viewportHeight（而非父视图高）做上下翻转，
+ * 以抵消宿主顶部原生标题栏造成的 inset，否则原生视图会上移、盖住工具栏。
  */
 const computeRect = (): ViewRect | null => {
   const element = stageRef.value;
@@ -31,38 +33,14 @@ const computeRect = (): ViewRect | null => {
   if (bounds.width < 8 || bounds.height < 8) {
     return null;
   }
-  let x = bounds.left;
-  let y = bounds.top;
-  // 插件 UI 跑在宿主的 iframe 里。原生侧锚定的是宿主主 WKWebView，需要的是
-  // 「顶层窗口」坐标；而 getBoundingClientRect 是相对当前 iframe 视口的。
-  // 这里沿 frameElement 逐层累加 iframe 偏移到顶层窗口坐标，否则原生视图会
-  // 缺这段 offset、顶到上方把 tab 栏和插件 header 一块遮住。跨域取不到就退回
-  // 本 frame 坐标（旧行为）。
-  try {
-    let win: Window = window;
-    for (let depth = 0; depth < 8; depth++) {
-      const frame = win.frameElement as HTMLElement | null;
-      if (!frame) {
-        break;
-      }
-      const box = frame.getBoundingClientRect();
-      x += box.left;
-      y += box.top;
-      const parent = win.parent;
-      if (!parent || parent === win) {
-        break;
-      }
-      win = parent;
-    }
-  } catch {
-    // 跨域 iframe：无法累加偏移，退回本 frame 坐标。
-  }
   return {
-    x,
-    y,
+    x: bounds.left,
+    y: bounds.top,
     width: bounds.width,
     height: bounds.height,
     scale: window.devicePixelRatio || 1,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
   };
 };
 
@@ -176,8 +154,8 @@ onMounted(() => {
     resizeObserver.observe(stageRef.value);
   }
   window.addEventListener('resize', scheduleSync);
-  // 宿主隐藏插件（切到其它 TAB）时 iframe 文档会变 hidden：借此摘掉原生视图，
-  // 避免它悬浮遮挡其它插件。重新可见时 reconcile 会重新挂载。
+  // 宿主切到其它插件 TAB 时会把本插件面板隐藏，文档随之变 hidden：借此摘掉原生
+  // 视图，避免它悬浮遮挡其它插件；重新可见时 reconcile 会重新挂载。
   document.addEventListener('visibilitychange', onVisibilityChange);
   // 挂载时虚拟机可能已经在运行（例如从设置页返回），补一次挂载。
   void reconcile();
