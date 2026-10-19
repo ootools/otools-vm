@@ -31,9 +31,35 @@ const computeRect = (): ViewRect | null => {
   if (bounds.width < 8 || bounds.height < 8) {
     return null;
   }
+  let x = bounds.left;
+  let y = bounds.top;
+  // 插件 UI 跑在宿主的 iframe 里。原生侧锚定的是宿主主 WKWebView，需要的是
+  // 「顶层窗口」坐标；而 getBoundingClientRect 是相对当前 iframe 视口的。
+  // 这里沿 frameElement 逐层累加 iframe 偏移到顶层窗口坐标，否则原生视图会
+  // 缺这段 offset、顶到上方把 tab 栏和插件 header 一块遮住。跨域取不到就退回
+  // 本 frame 坐标（旧行为）。
+  try {
+    let win: Window = window;
+    for (let depth = 0; depth < 8; depth++) {
+      const frame = win.frameElement as HTMLElement | null;
+      if (!frame) {
+        break;
+      }
+      const box = frame.getBoundingClientRect();
+      x += box.left;
+      y += box.top;
+      const parent = win.parent;
+      if (!parent || parent === win) {
+        break;
+      }
+      win = parent;
+    }
+  } catch {
+    // 跨域 iframe：无法累加偏移，退回本 frame 坐标。
+  }
   return {
-    x: bounds.left,
-    y: bounds.top,
+    x,
+    y,
     width: bounds.width,
     height: bounds.height,
     scale: window.devicePixelRatio || 1,
