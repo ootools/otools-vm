@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Plus, RefreshRight, Setting } from '@element-plus/icons-vue';
+import { Fold, Plus, RefreshRight, Setting } from '@element-plus/icons-vue';
 import { t } from '@/i18n';
 import { vmStore } from '@/state/vm-store';
 import { formatGb, osIcon, stateColor } from '@/utils/vm-display';
@@ -11,6 +11,7 @@ const emit = defineEmits<{
   (event: 'create'): void;
   (event: 'refresh'): void;
   (event: 'settings'): void;
+  (event: 'toggle-collapse'): void;
 }>();
 
 const vms = computed(() => vmStore.state.vms);
@@ -73,6 +74,15 @@ const stateLabel = (state: string): string => t(`vm.state.${state}`);
       </el-button>
       <span class="vm-sidebar-count">{{ t('vm.list.count', { count: vms.length }) }}</span>
     </footer>
+
+    <el-button
+      class="vm-sidebar-collapse"
+      :icon="Fold"
+      circle
+      size="small"
+      :title="t('vm.nav.collapse')"
+      @click="emit('toggle-collapse')"
+    />
   </aside>
 </template>
 
@@ -83,6 +93,7 @@ const stateLabel = (state: string): string => t(`vm.state.${state}`);
   width: 264px;
   min-width: 264px;
   height: 100%;
+  position: relative;
   border-right: 1px solid var(--el-border-color-lighter);
   background: var(--el-bg-color);
 }
@@ -245,5 +256,15 @@ const stateLabel = (state: string): string => t(`vm.state.${state}`);
 .vm-sidebar-count {
   font-size: 11px;
   color: var(--el-text-color-secondary);
+}
+
+/* 收缩把手：固定在侧栏内部右缘、垂直居中（不探出到控制台，避免被 VM 原生视图盖住）。 */
+.vm-sidebar-collapse {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  z-index: 5;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
 </style>

@@ -3,6 +3,8 @@
   "vm.app.subtitle": "Máquinas virtuales de escritorio Windows y Linux",
   "vm.nav.library": "Biblioteca",
   "vm.nav.settings": "Ajustes",
+  "vm.nav.collapse": "Contraer barra lateral",
+  "vm.nav.expand": "Expandir barra lateral",
   "vm.action.create": "Nueva máquina",
   "vm.action.start": "Iniciar",
   "vm.action.stop": "Apagar",

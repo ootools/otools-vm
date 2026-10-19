@@ -3,6 +3,8 @@
   "vm.app.subtitle": "Windows 与 Linux 桌面虚拟机",
   "vm.nav.library": "虚拟机库",
   "vm.nav.settings": "设置",
+  "vm.nav.collapse": "收起侧栏",
+  "vm.nav.expand": "展开侧栏",
   "vm.action.create": "新建虚拟机",
   "vm.action.start": "启动",
   "vm.action.stop": "关机",

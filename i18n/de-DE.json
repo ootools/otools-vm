@@ -3,6 +3,8 @@
   "vm.app.subtitle": "Windows- und Linux-Desktop-VMs",
   "vm.nav.library": "Bibliothek",
   "vm.nav.settings": "Einstellungen",
+  "vm.nav.collapse": "Seitenleiste einklappen",
+  "vm.nav.expand": "Seitenleiste ausklappen",
   "vm.action.create": "Neue VM",
   "vm.action.start": "Starten",
   "vm.action.stop": "Herunterfahren",

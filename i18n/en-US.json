@@ -3,6 +3,8 @@
   "vm.app.subtitle": "Windows and Linux desktop VMs",
   "vm.nav.library": "Library",
   "vm.nav.settings": "Settings",
+  "vm.nav.collapse": "Collapse sidebar",
+  "vm.nav.expand": "Expand sidebar",
   "vm.action.create": "New machine",
   "vm.action.start": "Start",
   "vm.action.stop": "Shut down",

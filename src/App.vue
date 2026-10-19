@@ -17,6 +17,8 @@ const createVisible = ref(false);
 const settingsVisible = ref(false);
 const cloneVisible = ref(false);
 const resizeVisible = ref(false);
+// 左侧栏是否已收起（给控制台让出更大空间）；收起后工具栏左侧图标可点开切回。
+const sidebarCollapsed = ref(false);
 const selected = computed(() => vmStore.selected.value);
 
 /** 宿主缺 virtualization 权限（版本过旧）。 */
@@ -92,11 +94,13 @@ onBeforeUnmount(() => {
 
     <div v-else class="vm-shell">
       <VmSidebar
+        v-if="!sidebarCollapsed"
         :selected-id="vmStore.state.selectedId"
         @select="vmStore.select"
         @create="createVisible = true"
         @refresh="refresh"
         @settings="settingsVisible = true"
+        @toggle-collapse="sidebarCollapsed = true"
       />
 
       <section class="vm-main">
@@ -113,10 +117,12 @@ onBeforeUnmount(() => {
         <VmToolbar
           v-if="selected"
           :vm="selected"
+          :collapsed="sidebarCollapsed"
           @settings="settingsVisible = true"
           @delete="requestDelete"
           @clone="cloneVisible = true"
           @resize-disk="resizeVisible = true"
+          @toggle-sidebar="sidebarCollapsed = false"
         />
         <VmConsole v-if="selected" :key="selected.id" :vm="selected" />
         <VmWelcomeView v-else @create="createVisible = true" />

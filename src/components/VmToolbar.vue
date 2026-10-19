@@ -15,12 +15,13 @@ import { vmStore } from '@/state/vm-store';
 import type { VmSummary } from '@/types/vm';
 import { isBusyState, osIcon, stateTagType } from '@/utils/vm-display';
 
-const props = defineProps<{ vm: VmSummary }>();
+const props = defineProps<{ vm: VmSummary; collapsed?: boolean }>();
 const emit = defineEmits<{
   (event: 'settings'): void;
   (event: 'delete'): void;
   (event: 'clone'): void;
   (event: 'resize-disk'): void;
+  (event: 'toggle-sidebar'): void;
 }>();
 
 const busy = computed(() => vmStore.state.busy || isBusyState(props.vm.state));
@@ -44,6 +45,15 @@ const run = async (action: () => Promise<boolean>) => {
 <template>
   <header class="vm-toolbar">
     <div class="vm-toolbar-title">
+      <el-button
+        v-if="props.collapsed"
+        class="vm-toolbar-menu"
+        :icon="Expand"
+        circle
+        size="small"
+        :title="t('vm.nav.expand')"
+        @click="emit('toggle-sidebar')"
+      />
       <span class="vm-toolbar-icon">{{ osIcon(vm.os) }}</span>
       <h2 class="vm-toolbar-name">{{ vm.name }}</h2>
       <span class="vm-toolbar-sub">

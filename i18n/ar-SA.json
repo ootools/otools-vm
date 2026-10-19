@@ -3,6 +3,8 @@
   "vm.app.subtitle": "أجهزة افتراضية لسطح مكتب Windows و Linux",
   "vm.nav.library": "المكتبة",
   "vm.nav.settings": "الإعدادات",
+  "vm.nav.collapse": "تصغير الشريط الجانبي",
+  "vm.nav.expand": "توسيع الشريط الجانبي",
   "vm.action.create": "جهاز جديد",
   "vm.action.start": "تشغيل",
   "vm.action.stop": "إيقاف",

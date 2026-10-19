@@ -3,6 +3,8 @@
   "vm.app.subtitle": "Виртуальные машины Windows и Linux",
   "vm.nav.library": "Библиотека",
   "vm.nav.settings": "Настройки",
+  "vm.nav.collapse": "Свернуть панель",
+  "vm.nav.expand": "Развернуть панель",
   "vm.action.create": "Создать ВМ",
   "vm.action.start": "Запустить",
   "vm.action.stop": "Завершить работу",

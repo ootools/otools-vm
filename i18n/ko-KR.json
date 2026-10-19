@@ -3,6 +3,8 @@
   "vm.app.subtitle": "Windows 및 Linux 데스크톱 가상 머신",
   "vm.nav.library": "가상 머신 목록",
   "vm.nav.settings": "설정",
+  "vm.nav.collapse": "사이드바 접기",
+  "vm.nav.expand": "사이드바 펼치기",
   "vm.action.create": "새 가상 머신",
   "vm.action.start": "시작",
   "vm.action.stop": "종료",
