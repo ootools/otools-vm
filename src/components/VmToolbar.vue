@@ -45,12 +45,10 @@ const run = async (action: () => Promise<boolean>) => {
   <header class="vm-toolbar">
     <div class="vm-toolbar-title">
       <span class="vm-toolbar-icon">{{ osIcon(vm.os) }}</span>
-      <div class="vm-toolbar-text">
-        <h2>{{ vm.name }}</h2>
-        <span class="vm-toolbar-sub">
-          {{ vm.arch }} · {{ vm.cpus }} {{ t('vm.unit.cpu') }} · {{ vm.memoryMb }} {{ t('vm.unit.mb') }}
-        </span>
-      </div>
+      <h2 class="vm-toolbar-name">{{ vm.name }}</h2>
+      <span class="vm-toolbar-sub">
+        {{ vm.arch }} · {{ vm.cpus }} {{ t('vm.unit.cpu') }} · {{ vm.memoryMb }} {{ t('vm.unit.mb') }}
+      </span>
       <el-tag :type="stateTagType(vm.state)" effect="light" size="small">
         {{ t(`vm.state.${vm.state}`) }}
       </el-tag>
@@ -122,7 +120,7 @@ const run = async (action: () => Promise<boolean>) => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 16px;
+  padding: 6px 14px;
   border-bottom: 1px solid var(--el-border-color-lighter);
   background: var(--el-bg-color);
 }
@@ -130,36 +128,39 @@ const run = async (action: () => Promise<boolean>) => {
 .vm-toolbar-title {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   min-width: 0;
 }
 
 .vm-toolbar-icon {
-  font-size: 20px;
+  font-size: 17px;
+  line-height: 1;
 }
 
-.vm-toolbar-text {
-  min-width: 0;
-}
-
-.vm-toolbar-text h2 {
+.vm-toolbar-name {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
   color: var(--el-text-color-primary);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
 }
 
 .vm-toolbar-sub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--el-text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .vm-toolbar-actions {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: none;
 }
 </style>
