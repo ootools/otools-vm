@@ -77,6 +77,17 @@ type FnSystemHandle = unsafe extern "system" fn(HcsSystem, HcsOperation, *const 
 type FnCloseSystem = unsafe extern "system" fn(HcsSystem);
 type FnGetSystemProps = unsafe extern "system" fn(HcsSystem, HcsOperation, *const u16) -> i32;
 type FnEnumerateSystems = unsafe extern "system" fn(*const u16, HcsOperation) -> i32;
+/// `HcsOpenComputeSystem(id, requestedAccess, HCS_SYSTEM*)` —— 同步返回，不走操作。
+///
+/// 区别于其它 API 的「发起 + 等结果」两段式：它直接给句柄。这让我们能在进程
+/// 重启后接管上次遗留的机器，而不是把它们留成没人管的孤儿。
+type FnOpenSystem = unsafe extern "system" fn(*const u16, u32, *mut HcsSystem) -> i32;
+/// `HcsModifyComputeSystem(system, operation, configuration, identity)`。
+type FnModifySystem =
+    unsafe extern "system" fn(HcsSystem, HcsOperation, *const u16, *const c_void) -> i32;
+
+/// `GENERIC_ALL`：`HcsOpenComputeSystem` 的 `requestedAccess` 只接受这个值。
+const GENERIC_ALL: u32 = 0x1000_0000;
 
 /// 启动时一次性解析出来的符号表。
 pub struct Api {
@@ -92,6 +103,10 @@ pub struct Api {
     close_system: FnCloseSystem,
     get_properties: FnGetSystemProps,
     enumerate_systems: FnEnumerateSystems,
+    /// 可选：老系统上可能没有，缺失时「接管残留虚拟机」降级为不支持。
+    open_system: Option<FnOpenSystem>,
+    /// 可选：缺它时只是不能热调资源，其余功能不受影响。
+    modify_system: Option<FnModifySystem>,
 }
 
 // 函数指针本身是只读的，跨线程共享安全。
@@ -142,6 +157,12 @@ fn load() -> Result<Api, String> {
             }
         }};
     }
+    // 可选符号：缺失只降级对应功能，不阻断 HCS 整体可用性。
+    macro_rules! maybe {
+        ($name:literal) => {{
+            unsafe { symbol(module, $name) }.map(|pointer| unsafe { std::mem::transmute(pointer) })
+        }};
+    }
 
     Ok(Api {
         create_operation: need!("HcsCreateOperation"),
@@ -156,6 +177,8 @@ fn load() -> Result<Api, String> {
         close_system: need!("HcsCloseComputeSystem"),
         get_properties: need!("HcsGetComputeSystemProperties"),
         enumerate_systems: need!("HcsEnumerateComputeSystems"),
+        open_system: maybe!("HcsOpenComputeSystem"),
+        modify_system: maybe!("HcsModifyComputeSystem"),
     })
 }
 
@@ -257,11 +280,65 @@ impl<'a> System<'a> {
     }
 
     /// 打开一台已存在的虚拟机（进程重启后接管）。
+    ///
+    /// 这是**同步**调用：直接返回句柄，不经过「发起 + 等结果」。
+    /// `requestedAccess` 只接受 `GENERIC_ALL`，传别的一律拒绝。
+    ///
+    /// 用途：插件崩溃/宿主重启后，上一轮开的机器可能还在跑（尤其没配
+    /// `ShouldTerminateOnLastHandleClosed` 或句柄被别的进程持有）。以前这里
+    /// 返回「暂不支持接管」，结果那些机器成了界面上看不见、也停不掉的孤儿。
     pub fn open(api: &'a Api, id: &str) -> Result<Self, String> {
-        // 没有公开的 HcsOpenComputeSystem 时，用「按 id 建同名系统」是不行的；
-        // 这里走属性查询确认存在性，句柄交给调用方后续用 create 重建。
-        let _ = (api, id);
-        Err("暂不支持接管已存在的 HCS 虚拟机".to_string())
+        let Some(function) = api.open_system else {
+            return Err("当前系统的 computecore.dll 不支持接管已存在的虚拟机".to_string());
+        };
+        let mut handle: HcsSystem = std::ptr::null_mut();
+        let code = unsafe { function(wide(id).as_ptr(), GENERIC_ALL, &mut handle) };
+        if code != S_OK {
+            if !handle.is_null() {
+                unsafe { (api.close_system)(handle) };
+            }
+            return Err(describe(code));
+        }
+        if handle.is_null() {
+            return Err("HCS 未返回虚拟机句柄".to_string());
+        }
+        Ok(Self { api, handle })
+    }
+
+    /// 运行中热调资源（内存 / CPU）。
+    ///
+    /// 文档：`ModifySettingRequest` 形如
+    /// `{"ResourcePath":"VirtualMachine/ComputeTopology/Memory/SizeInMB","RequestType":"Update","Settings":2048}`。
+    /// `ResourcePath` 里的 `VirtualMachine` 是固定前缀，不是机器名。
+    pub fn modify(&self, resource_path: &str, settings: serde_json::Value) -> Result<(), String> {
+        let Some(function) = self.api.modify_system else {
+            return Err("当前系统的 computecore.dll 不支持运行中调整资源".to_string());
+        };
+        let document = serde_json::json!({
+            "ResourcePath": resource_path,
+            "RequestType": "Update",
+            "Settings": settings,
+        })
+        .to_string();
+
+        let operation = Operation::new(self.api);
+        let code = unsafe {
+            function(
+                self.handle,
+                operation.handle,
+                wide(&document).as_ptr(),
+                std::ptr::null(),
+            )
+        };
+        if code != S_OK {
+            return Err(format!("调整资源失败：{}", describe(code)));
+        }
+        let (result, _document) = operation.wait();
+        if result == S_OK {
+            Ok(())
+        } else {
+            Err(format!("调整资源失败：{}", describe(result)))
+        }
     }
 
     pub fn start(&self) -> Result<(), String> {

@@ -601,6 +601,72 @@ fn cmd_hcs_status() -> Result<Value, String> {
     }))
 }
 
+/// HCS 后端在 HCS 里遗留的虚拟机（界面看不见、但确实在跑）。
+///
+/// 场景：插件崩溃、宿主被强杀、或换了引擎。这些机器会一直占着内存和 VHDX，
+/// 以前只能让用户去任务管理器杀 `vmwp.exe`。现在给出清单让用户一键清掉。
+///
+/// 非 Windows / 当前不是 HCS 引擎时恒返回空数组，调用方不必自己判断平台。
+fn cmd_hcs_orphans() -> Result<Value, String> {
+    #[cfg(target_os = "windows")]
+    {
+        if engine().info().kind != "hcs" {
+            return Ok(json!({ "orphans": Vec::<String>::new() }));
+        }
+        // 这里必须构造具体类型：`list_orphans` 不在 `Engine` trait 上（只有 HCS 有），
+        // 且它不需要 `start()` 过的状态，重新探测一次即可。
+        let hcs = engine::hcs::HcsEngine::create();
+        Ok(json!({ "orphans": hcs.list_orphans() }))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(json!({ "orphans": Vec::<String>::new() }))
+    }
+}
+
+/// 按 spec id 直接收掉孤儿虚拟机。
+///
+/// **不能复用 `vm_stop`**：那条路径要先 `store::load_spec(id)`，而孤儿机器的
+/// spec 往往已经被用户删掉了（正是删了才成孤儿），查不到就直接报错，永远
+/// 清不掉。所以这里绕开 store，直接走 HCS 的 open + shutdown/terminate。
+///
+/// 传空数组表示「全部清理」。单个失败不影响其它项，失败项如实回报。
+fn cmd_hcs_orphans_kill(payload: &Value) -> Result<Value, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let requested: Vec<String> = payload
+            .get("ids")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if engine().info().kind != "hcs" {
+            return Ok(json!({ "killed": Vec::<String>::new(), "failed": Vec::<String>::new() }));
+        }
+        let hcs = engine::hcs::HcsEngine::create();
+        // 空清单 = 清全部；先把「当前真实存在的孤儿」取出来做交集，
+        // 避免前端拿旧清单来打一个已经被清掉的 id。
+        let live = hcs.list_orphans();
+        let targets: Vec<String> = if requested.is_empty() {
+            live
+        } else {
+            requested.into_iter().filter(|id| live.contains(id)).collect()
+        };
+        let (killed, failed) = hcs.kill_orphans(&targets);
+        Ok(json!({ "killed": killed, "failed": failed }))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = payload;
+        Ok(json!({ "killed": Vec::<String>::new(), "failed": Vec::<String>::new() }))
+    }
+}
+
 fn cmd_network_backend(payload: &Value) -> Result<Value, String> {
     let mut items = Vec::new();
     for mode in [
@@ -837,6 +903,8 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
         "vm_network_interfaces" => cmd_network_interfaces(),
         "vm_network_backend" => cmd_network_backend(&payload),
         "vm_hcs_status" => cmd_hcs_status(),
+        "vm_hcs_orphans" => cmd_hcs_orphans(),
+        "vm_hcs_orphans_kill" => cmd_hcs_orphans_kill(&payload),
         "vm_get_settings" => cmd_get_settings(),
         "vm_set_engine_preference" => cmd_set_engine_preference(&payload),
         "vm_rosetta_status" => cmd_rosetta_status(),

@@ -13,7 +13,8 @@
  * 1. 没有 QEMU 时欢迎页出现「一键获取」卡片，并调用 `vm_qemu_plan`；
  * 2. 点「一键获取」调用 `vm_qemu_install`，随后进入轮询；
  * 3. 创建对话框出现「存储位置」，选目录走宿主 dialog，提交时 `storageDir` 真的传下去；
- * 4. 选完目录会问 `vm_disk_space` 并显示可用空间。
+ * 4. 选完目录会问 `vm_disk_space` 并显示可用空间；
+ * 5. 遗留的孤儿虚拟机能列出、能一键清理，且**不误走 `vm_stop`**。
  */
 const { chromium } = require('playwright');
 const http = require('http');
@@ -124,6 +125,14 @@ window.otools = {
         throw new Error('PICK_DIALOG_UNAVAILABLE');
       case 'vm_engine_reprobe':
         return engineInfo(true);
+      // 孤儿清理：默认没有孤儿，测试里用 addInitScript 预置 window.__orphans
+      // 来模拟「上次进程被强杀」。真机上这两个命令只在 HCS 引擎下有内容。
+      case 'vm_hcs_orphans':
+        return { orphans: window.__orphans || [] };
+      case 'vm_hcs_orphans_kill':
+        window.__killedOrphans = (payload && payload.ids) || [];
+        window.__orphans = [];
+        return { killed: window.__killedOrphans, failed: [] };
       default:
         return {};
     }
@@ -224,6 +233,32 @@ function check(name, condition, detail) {
   check('调用了 vm_create', Boolean(createCall));
   check('vm_create 带上了 storageDir', createCall?.payload?.storageDir === 'D:/VMs/storage',
     JSON.stringify(createCall?.payload?.storageDir));
+
+  console.log('\n[5] 孤儿清理：遗留机器能列出并一键收掉');
+  // 模拟「上次宿主被强杀」：HCS 里还留着两台机器。
+  await page.addInitScript(`window.__orphans = ['vm-alpha', 'vm-beta'];`);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  const orphanText = await page.locator('body').innerText();
+  check('出现孤儿提示卡片', orphanText.includes('遗留'), orphanText.slice(0, 300));
+  check('列出了遗留机器 id',
+    orphanText.includes('vm-alpha') && orphanText.includes('vm-beta'), orphanText.slice(0, 400));
+  // 回归：清理绝不能走 vm_stop —— 它要先 load_spec，孤儿机器的 spec 已被删，会永远失败。
+  check('没有误用 vm_stop 清理孤儿',
+    !(await calls()).some((c) => c.command === 'vm_stop' && c.payload?.id === 'vm-alpha'));
+  const killButton = page.getByRole('button', { name: '全部清理' });
+  check('出现「全部清理」按钮', (await killButton.count()) > 0);
+  if (await killButton.count()) {
+    await killButton.first().click();
+    await page.waitForTimeout(900);
+    const killCall = (await calls()).find((c) => c.command === 'vm_hcs_orphans_kill');
+    check('调用了 vm_hcs_orphans_kill', Boolean(killCall));
+    check('把两个 id 都传下去了',
+      JSON.stringify(killCall?.payload?.ids) === JSON.stringify(['vm-alpha', 'vm-beta']),
+      JSON.stringify(killCall?.payload));
+    const afterKill = await page.locator('body').innerText();
+    check('清理后卡片消失', !afterKill.includes('vm-alpha'), afterKill.slice(0, 300));
+  }
 
   await browser.close();
   server.close();

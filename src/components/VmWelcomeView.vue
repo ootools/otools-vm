@@ -89,6 +89,8 @@ onMounted(async () => {
   await refreshQemuPlan();
   // 上次安装没跑完（用户中途关了面板）时把进度接回来。
   await pollInstallOnce();
+  // 上次进程被强杀可能留下在跑的机器，进页面就查一次。
+  await refreshOrphans();
 });
 
 // ------------------------------------------------------------ QEMU 一键获取
@@ -202,6 +204,50 @@ const changeEngine = async (preference: EnginePreference): Promise<void> => {
     savingEngine.value = false;
   }
 };
+
+// ------------------------------------------------------------ 孤儿清理
+
+/**
+ * 上次宿主进程被强杀（或插件崩溃）后，HCS 里可能还留着在跑的机器。
+ *
+ * 这些机器在虚拟机列表里根本看不到，但确实占着内存和 VHDX 文件——不提示
+ * 的话用户只会觉得「电脑变卡了」，或者去任务管理器赌一把 `vmwp.exe`。
+ * 所以进页面就查一次，有就直接摆出来。
+ */
+const orphans = ref<string[]>([]);
+const killingOrphans = ref(false);
+
+const refreshOrphans = async (): Promise<void> => {
+  try {
+    const result = await VmApi.getHcsOrphans();
+    orphans.value = result.orphans;
+  } catch {
+    // 查不到就当没有：这是个附加提示，不该挡住主流程。
+    orphans.value = [];
+  }
+};
+
+const killOrphans = async (): Promise<void> => {
+  killingOrphans.value = true;
+  try {
+    const result = await VmApi.killHcsOrphans(orphans.value);
+    if (result.failed.length > 0) {
+      ElMessage.warning(
+        t('vm.hcs.orphanPartial', {
+          done: String(result.killed.length),
+          rest: String(result.failed.length),
+        }),
+      );
+    } else {
+      ElMessage.success(t('vm.hcs.orphanKilled'));
+    }
+    await refreshOrphans();
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error));
+  } finally {
+    killingOrphans.value = false;
+  }
+};
 </script>
 
 <template>
@@ -297,6 +343,26 @@ const changeEngine = async (preference: EnginePreference): Promise<void> => {
               {{ option.label }}
             </el-radio>
           </el-radio-group>
+        </div>
+
+        <!--
+          上次进程被强杀后留在 HCS 里的机器。
+          列表里看不见但确实在跑，占内存也占着 VHDX，给一键清理。
+        -->
+        <div v-if="orphans.length > 0" class="vm-welcome-card vm-welcome-card-wide">
+          <h4>{{ t('vm.hcs.orphanTitle') }}</h4>
+          <p class="vm-welcome-engine">
+            {{ t('vm.hcs.orphanLead', { count: String(orphans.length) }) }}
+          </p>
+          <p class="vm-welcome-host vm-hcs-orphans">{{ orphans.join('、') }}</p>
+          <div class="vm-qemu-actions">
+            <el-button type="primary" size="small" :loading="killingOrphans" @click="killOrphans">
+              {{ t('vm.hcs.orphanKill') }}
+            </el-button>
+            <el-button size="small" :disabled="killingOrphans" @click="refreshOrphans">
+              {{ t('vm.qemu.reprobe') }}
+            </el-button>
+          </div>
         </div>
 
         <div class="vm-welcome-card">
@@ -464,5 +530,10 @@ const changeEngine = async (preference: EnginePreference): Promise<void> => {
   border-radius: 6px;
   padding: 6px 8px;
   margin-top: 8px;
+}
+
+.vm-hcs-orphans {
+  word-break: break-all;
+  font-family: var(--el-font-family-mono, monospace);
 }
 </style>

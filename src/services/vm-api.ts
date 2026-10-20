@@ -3,6 +3,8 @@ import type {
   DiskSpace,
   EngineInfo,
   EnginePreference,
+  HcsOrphanKillResult,
+  HcsOrphans,
   HcsStatus,
   HostInfo,
   HostInterface,
@@ -52,6 +54,18 @@ export const VmApi = {
    * HCS 引擎状态。非 Windows 平台返回 `supported: false`，调用方不必自己判断平台。
    */
   getHcsStatus: () => invokeNative<HcsStatus>('vm_hcs_status'),
+
+  /**
+   * HCS 里遗留的孤儿虚拟机。
+   *
+   * 只在当前引擎确实是 HCS 时才有内容；其它后端恒返回空数组，调用方可以
+   * 无脑调用。**不能用 `stop` 清理**：孤儿机器的 spec 多半已被删除，
+   * `stop` 要先查 spec 会直接失败，必须走 `killHcsOrphans`。
+   */
+  getHcsOrphans: () => invokeNative<HcsOrphans>('vm_hcs_orphans'),
+  /** 收掉孤儿；不传 id 表示全部清理。 */
+  killHcsOrphans: (ids: string[] = []) =>
+    invokeNative<HcsOrphanKillResult>('vm_hcs_orphans_kill', { ids }),
 
   getSettings: () => invokeNative<VmSettings>('vm_get_settings'),
 

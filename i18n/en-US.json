@@ -227,5 +227,10 @@
   "vm.qemu.reprobe": "Check again",
   "vm.qemu.downloading": "Downloading…",
   "vm.qemu.installing": "Installing…",
-  "vm.qemu.done": "QEMU installed."
+  "vm.qemu.done": "QEMU installed.",
+  "vm.hcs.orphanTitle": "Leftover virtual machines are still running",
+  "vm.hcs.orphanLead": "{count} virtual machine(s) were left behind when the host exited unexpectedly. They are not listed on the left but still hold memory and disk files. You can clean them up here.",
+  "vm.hcs.orphanKill": "Clean up all",
+  "vm.hcs.orphanKilled": "Leftover virtual machines cleaned up",
+  "vm.hcs.orphanPartial": "Cleaned up {done}, but {rest} could not be stopped. Retry or restart the system."
 }

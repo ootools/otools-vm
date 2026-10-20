@@ -227,5 +227,10 @@
   "vm.qemu.reprobe": "Volver a comprobar",
   "vm.qemu.downloading": "Descargando…",
   "vm.qemu.installing": "Instalando…",
-  "vm.qemu.done": "QEMU instalado."
+  "vm.qemu.done": "QEMU instalado.",
+  "vm.hcs.orphanTitle": "Quedan máquinas virtuales en ejecución",
+  "vm.hcs.orphanLead": "Quedaron {count} máquinas virtuales tras el cierre inesperado del host. No aparecen en la lista, pero siguen ocupando memoria y archivos de disco. Puede limpiarlas aquí.",
+  "vm.hcs.orphanKill": "Limpiar todo",
+  "vm.hcs.orphanKilled": "Máquinas virtuales restantes limpiadas",
+  "vm.hcs.orphanPartial": "Se limpiaron {done}, pero {rest} no se pudieron detener. Reintente o reinicie el sistema."
 }

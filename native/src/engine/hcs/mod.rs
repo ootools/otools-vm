@@ -3,6 +3,7 @@
 //! 模块划分：
 //! - `ffi`：运行期动态绑定 `computecore.dll`，不依赖 Windows SDK；
 //! - `config`：把 `VmSpec` 翻成 HCS 的 JSON 机器文档（单独可测）；
+//! - `network`：HCN NAT 网络 + 端点，HCS 虚拟机靠它才有网卡；
 //! - `disk`：把 QEMU 时代的 RAW 盘处理成 HCS 要求的 VHDX；
 //! - `engine`：`Engine` trait 的实现。
 
@@ -10,6 +11,7 @@ pub mod config;
 pub mod disk;
 pub mod engine;
 pub mod ffi;
+pub mod network;
 
 pub use engine::HcsEngine;
 
@@ -159,7 +161,7 @@ mod tests {
     #[test]
     fn document_carries_resources_and_primary_disk() {
         let spec = sample_spec();
-        let text = config::machine_document_text(&spec, "C:/vm/disk.vhdx", None);
+        let text = config::machine_document_text(&spec, "C:/vm/disk.vhdx", None, None);
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
         let machine = &value["VirtualMachine"];
 
@@ -174,26 +176,114 @@ mod tests {
     }
 
     #[test]
-    fn installer_becomes_second_scsi_device() {
+    fn memory_uses_schema_fields_not_guessed_ones() {
+        // 回归：`ComputeTopology.Memory` 里**没有** `Backing` 字段。
+        // 写错不会被 HCS 报错，只会被静默忽略——于是「设置 4G 实际拿到默认值」。
+        let value: serde_json::Value =
+            serde_json::from_str(&config::machine_document_text(&sample_spec(), "C:/d.vhdx", None, None))
+                .unwrap();
+        let memory = &value["VirtualMachine"]["ComputeTopology"]["Memory"];
+        assert!(memory.get("Backing").is_none(), "Backing 不是有效字段: {}", memory);
+        assert_eq!(memory["SizeInMB"], 2048);
+        assert_eq!(memory["AllowOvercommit"], true);
+    }
+
+    #[test]
+    fn installer_becomes_iso_not_virtual_disk() {
+        // 回归：ISO 必须标 `Iso`。写成 `VirtualDisk` 会被当磁盘打开，
+        // 客户机里根本看不到光驱内容——装机时表现为「找不到安装介质」。
         let spec = sample_spec();
         let value: serde_json::Value = serde_json::from_str(&config::machine_document_text(
             &spec,
             "C:/vm/disk.vhdx",
             Some("C:/iso/win11.iso"),
+            None,
         ))
         .unwrap();
-        let scsi = &value["VirtualMachine"]["Devices"]["Scsi"];
-        assert_eq!(scsi["Installer cdrom"]["Attachments"]["0"]["Path"], "C:/iso/win11.iso");
+        let attachment = &value["VirtualMachine"]["Devices"]["Scsi"]["Installer cdrom"]["Attachments"]["0"];
+        assert_eq!(attachment["Path"], "C:/iso/win11.iso");
+        assert_eq!(attachment["Type"], "Iso");
+        assert_eq!(attachment["ReadOnly"], true);
     }
 
     #[test]
-    fn boot_target_points_at_primary_disk() {
+    fn network_adapter_goes_under_network_adapters() {
+        // 回归：字段名是 `Devices.NetworkAdapters`，不是 `Devices.Network`。
+        // 写错会被静默忽略——机器起得来，但客户机里没有网卡，最难查。
+        let value: serde_json::Value = serde_json::from_str(&config::machine_document_text(
+            &sample_spec(),
+            "C:/d.vhdx",
+            None,
+            Some("11111111-2222-3333-4444-555555555555"),
+        ))
+        .unwrap();
+        let devices = &value["VirtualMachine"]["Devices"];
+        assert!(devices.get("Network").is_none(), "Network 不是有效字段");
+        assert_eq!(
+            devices["NetworkAdapters"]["Network adapter"]["EndpointId"],
+            "11111111-2222-3333-4444-555555555555"
+        );
+    }
+
+    #[test]
+    fn no_endpoint_means_no_adapter() {
+        // 没端点时不该写一个空 NetworkAdapters：HCS 会据此认为要挂网卡却找不到端点。
         let value: serde_json::Value =
-            serde_json::from_str(&config::machine_document_text(&sample_spec(), "C:/vm/d.vhdx", None))
+            serde_json::from_str(&config::machine_document_text(&sample_spec(), "C:/d.vhdx", None, None))
+                .unwrap();
+        assert!(value["VirtualMachine"]["Devices"].get("NetworkAdapters").is_none());
+    }
+
+    #[test]
+    fn boot_target_points_at_primary_disk_by_default() {
+        let value: serde_json::Value =
+            serde_json::from_str(&config::machine_document_text(&sample_spec(), "C:/vm/d.vhdx", None, None))
                 .unwrap();
         let boot = &value["VirtualMachine"]["Chipset"]["Uefi"]["BootThis"];
         assert_eq!(boot["DevicePath"], "Primary disk");
         assert_eq!(boot["DeviceType"], "ScsiDrive");
+    }
+
+    #[test]
+    fn cdrom_boots_first_only_when_asked_and_media_present() {
+        // 首次装系统：光驱优先且确实有 ISO → 从光驱引导。
+        let mut spec = sample_spec();
+        spec.boot_order = vec!["cdrom".to_string(), "disk".to_string()];
+        spec.installer_path = Some("C:/iso/win11.iso".to_string());
+        let value: serde_json::Value =
+            serde_json::from_str(&config::machine_document_text(&spec, "C:/d.vhdx", None, None)).unwrap();
+        assert_eq!(
+            value["VirtualMachine"]["Chipset"]["Uefi"]["BootThis"]["DevicePath"],
+            "Installer cdrom"
+        );
+
+        // 光驱优先但**没有** ISO：不能引导到不存在的设备，否则客户机起不来。
+        let mut spec = sample_spec();
+        spec.boot_order = vec!["cdrom".to_string(), "disk".to_string()];
+        spec.installer_path = None;
+        let value: serde_json::Value =
+            serde_json::from_str(&config::machine_document_text(&spec, "C:/d.vhdx", None, None)).unwrap();
+        assert_eq!(
+            value["VirtualMachine"]["Chipset"]["Uefi"]["BootThis"]["DevicePath"],
+            "Primary disk"
+        );
+    }
+
+    #[test]
+    fn properties_query_does_not_request_state() {
+        // 回归：`State` 不是 `System_PropertyType` 的变体（只有 Memory /
+        // Statistics / ProcessList / TerminateOnLastHandleClosed /
+        // SharedMemoryRegion / GuestConnection）。请求它会让整份查询被拒，
+        // 于是永远查不到状态、界面一直显示「运行中」。
+        let query: serde_json::Value =
+            serde_json::from_str(config::properties_query()).unwrap();
+        let types = query["PropertyTypes"].as_array().unwrap();
+        assert!(
+            !types.iter().any(|item| item.as_str() == Some("State")),
+            "State 不在合法变体里: {}",
+            query
+        );
+        assert!(types.iter().any(|item| item.as_str() == Some("Memory")));
     }
 
     #[test]
@@ -231,8 +321,26 @@ mod tests {
         use crate::engine::hcs::engine::map_state;
         assert_eq!(map_state(r#"{"State":"Running"}"#), VmState::Running);
         assert_eq!(map_state(r#"{"State":"Paused"}"#), VmState::Paused);
+        assert_eq!(map_state(r#"{"State":"Stopped"}"#), VmState::Stopped);
+        assert_eq!(map_state(r#"{"State":"Created"}"#), VmState::Stopped);
         assert_eq!(map_state(r#"{"State":"Off"}"#), VmState::Stopped);
         assert_eq!(map_state(""), VmState::Stopped);
+    }
+
+    #[test]
+    fn state_mapping_ignores_enum_values_that_do_not_exist() {
+        // 回归：HCS 的 State 枚举里没有 Starting / Stopping / RunningFrozen。
+        // 早前按那套词表写分支，永远命中不了，等于三段死代码。
+        use crate::engine::hcs::engine::map_state;
+        for fake in ["Starting", "Stopping", "RunningFrozen"] {
+            let document = format!(r#"{{"State":"{}"}}"#, fake);
+            // 不能因为这些不存在的词被判成「正在启动/停止」。
+            assert!(
+                !matches!(map_state(&document), VmState::Starting | VmState::Stopping),
+                "{} 造成了状态误判",
+                fake
+            );
+        }
     }
 
     #[test]

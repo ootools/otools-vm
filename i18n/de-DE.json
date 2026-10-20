@@ -227,5 +227,10 @@
   "vm.qemu.reprobe": "Erneut prüfen",
   "vm.qemu.downloading": "Wird heruntergeladen …",
   "vm.qemu.installing": "Wird installiert …",
-  "vm.qemu.done": "QEMU ist installiert."
+  "vm.qemu.done": "QEMU ist installiert.",
+  "vm.hcs.orphanTitle": "Zurückgebliebene virtuelle Maschinen laufen noch",
+  "vm.hcs.orphanLead": "Beim unerwarteten Beenden des Hosts sind {count} virtuelle Maschinen zurückgeblieben. Sie erscheinen nicht in der Liste, belegen aber weiterhin Arbeitsspeicher und Datenträgerdateien. Hier können Sie sie aufräumen.",
+  "vm.hcs.orphanKill": "Alle aufräumen",
+  "vm.hcs.orphanKilled": "Zurückgebliebene virtuelle Maschinen aufgeräumt",
+  "vm.hcs.orphanPartial": "{done} aufgeräumt, aber {rest} konnten nicht beendet werden. Erneut versuchen oder das System neu starten."
 }

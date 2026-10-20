@@ -144,6 +144,24 @@ export interface HcsStatus {
 }
 
 /**
+ * HCS 后端的孤儿虚拟机。
+ *
+ * 「孤儿」指 HCS 里还活着、但宿主这边的托管表里没有记录的机器。典型成因是
+ * 上次宿主进程被强杀，`vmwp.exe` 留在后台。这类机器会一直占着内存和磁盘，
+ * 而用户在自己的虚拟机列表里看不到它，只能去任务管理器猜。
+ */
+export interface HcsOrphans {
+  /** 机器对应的 spec id（已去掉 `otools-vm-` 前缀）。 */
+  orphans: string[];
+}
+
+/** 清理孤儿的结果。失败项单独列出，不吞掉原因。 */
+export interface HcsOrphanKillResult {
+  killed: string[];
+  failed: string[];
+}
+
+/**
  * 引擎偏好。
  *
  * `auto` 按平台默认（macOS 用 VZ、其它用 QEMU）。`hcs` 只在 Windows 有意义：

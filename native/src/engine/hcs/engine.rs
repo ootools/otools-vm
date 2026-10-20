@@ -1,17 +1,20 @@
 //! HCS 后端：Windows 上的原生虚拟化（走 Host Compute Service）。
 //!
-//! 与 QEMU 后端的取舍（都是硬约束，不是暂时没做）：
-//! - **能跑**：UEFI 引导、SCSI 磁盘与光驱、CPU/内存热调、暂停/继续、
-//!   优雅关机与强制关闭。CPU 由 Hyper-V 直接执行，性能接近原生。
-//! - **不能**：**拿不到客户机画面**。HCS 不提供 framebuffer / 截屏 API，
-//!   商业实现（如 App Sandbox）都要自己写签名内核显示驱动。因此
-//!   `native_view` 能力恒为 false，前端不该指望内嵌视图。
+//! 与 QEMU 后端的取舍：
+//! - **能跑**：UEFI 引导、SCSI 磁盘与光驱、CPU/内存、暂停/继续、
+//!   优雅关机与强制关闭、NAT 网络。CPU 由 Hyper-V 直接执行，性能接近原生。
+//! - **能接管**：进程重启后可以用 `HcsOpenComputeSystem` 重新拿到上次遗留
+//!   虚拟机的句柄，不必把它们留成界面上看不见的孤儿。
+//! - **不能**：拿不到客户机画面。HCS 不提供 framebuffer 接口——schema 2.5 里
+//!   确实有 `ConsoleImageQuery`，但它只出现在 `ProcessModifyRequest` 的
+//!   `ConsoleSize` 语境下，`System_PropertyType` 里没有对应变体，也就是说
+//!   **没有公开的取图入口**。商业实现（如 App Sandbox）都要自带签名内核
+//!   显示驱动。因此 `native_view` / `display_output` 恒为 false。
 //! - **不能**：共享目录（HCS 的 Plan9 共享只服务容器场景）、USB 直通、
-//!   快照存档（HCS 有 `HcsSaveComputeSystem`，但恢复需配套运行时状态文件，
+//!   快照存档（`HcsSaveComputeSystem` 存在，但恢复需要配套运行时状态文件，
 //!   v1 不做）。
 //! - **磁盘只吃 VHDX**，见 `disk` 模块。
-//! - **网络走 HCN**，与 QEMU 的 `-netdev` 模型完全不同，v1 只做「不配网络」，
-//!   即客户机无网卡；接 HCN 需要额外的命名空间与 NAT 编排。
+//! - **网络只有 NAT**：桥接 / 仅主机都要宿主预配置 HCN 网络，见 `network` 模块。
 //!
 //! 权限是硬门槛：HCS 只允许管理员或 Hyper-V Administrators 组成员。探测阶段
 //! 就会拦下并给出可操作提示，不做「先失败再猜」。
@@ -20,8 +23,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use super::super::{Engine, ViewRect};
-use super::{config, disk, ffi};
-use crate::model::{EngineCaps, EngineInfo, VmSpec, VmState};
+use super::{config, disk, ffi, network};
+use crate::model::{EngineCaps, EngineInfo, NetworkMode, VmSpec, VmState};
 
 /// 本插件创建的虚拟机 id 前缀。
 ///
@@ -32,10 +35,15 @@ const ID_PREFIX: &str = "otools-vm-";
 /// 一台由本进程托管的 HCS 虚拟机。
 struct ManagedVm {
     system: ffi::System<'static>,
-    /// 本次创建的 VHDX 是否为临时生成（停止后不删，用户可能要继续用；
-    /// 保留字段以便将来做清理策略）。
+    /// 本次创建的 VHDX 路径。
+    ///
+    /// 停止后不删：用户可能还要继续用，删盘等于把系统装了两遍。
     #[allow(dead_code)]
     prepared_disk: Option<std::path::PathBuf>,
+    /// NAT 网络。**必须活到机器关闭之后**：先删端点再关机器，HCS 会报设备错误。
+    /// 字段顺序决定 Drop 顺序，`_network` 声明在 `system` 之后，因此先于它释放
+    /// —— 这里靠显式 `Option::take` 在 `stop` 里控制，不依赖声明顺序。
+    net: Option<network::NatNetwork>,
     last_error: String,
     paused: bool,
 }
@@ -51,6 +59,11 @@ fn with_machines<R>(work: impl FnOnce(&mut HashMap<String, ManagedVm>) -> R) -> 
     let mut guard = CHILDREN.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let map = guard.get_or_insert_with(HashMap::new);
     work(map)
+}
+
+/// HCS 内部的虚拟机 id（带前缀，避免误伤别人的机器）。
+fn machine_id(spec_id: &str) -> String {
+    format!("{}{}", ID_PREFIX, crate::paths::sanitize_id(spec_id))
 }
 
 pub struct HcsEngine {
@@ -70,25 +83,25 @@ impl HcsEngine {
     pub fn is_supported_platform() -> bool {
         cfg!(target_os = "windows")
     }
-
 }
 
 /// 把 HCS 的状态文档翻成内部状态。
 ///
-/// 文档形如 `{"State":"Running"}`；只匹配 ASCII 关键字，避免受系统语言影响。
-/// 空串（查不到）按 `Stopped` 处理不够准确，但调用方在查不到时会先兜一层
-/// 「句柄还在就认为 Running」，所以这里只负责能认出关键字的情况。
+/// `State` 是枚举，官方只有六个值：`Created` / `Running` / `Paused` /
+/// `Stopped` / `SavedAsTemplate` / `Unknown`。**没有** `Starting` / `Stopping`
+/// / `RunningFrozen`——早前按那套词表写的分支永远不会命中，等于状态机里
+/// 藏了三段死代码（同时把 `SavedAsTemplate` 误当成关机）。
+///
+/// 只匹配 ASCII 关键字，不受系统语言影响。
 pub fn map_state(raw: &str) -> VmState {
     let lowered = raw.to_ascii_lowercase();
-    if lowered.contains("\"running\"") || lowered.contains("\"runningfrozen\"") {
+    if lowered.contains("\"running\"") {
         VmState::Running
     } else if lowered.contains("\"paused\"") {
         VmState::Paused
-    } else if lowered.contains("\"starting\"") {
-        VmState::Starting
-    } else if lowered.contains("\"stopping\"") || lowered.contains("\"stopped\"") {
-        VmState::Stopping
     } else {
+        // `Created` / `Stopped` / `SavedAsTemplate` / `Unknown` / 空串：
+        // 用户视角都是「没在跑」。
         VmState::Stopped
     }
 }
@@ -111,20 +124,23 @@ impl Engine for HcsEngine {
                 None
             },
             caps: EngineCaps {
-                // HCS 没有 framebuffer API，画面拿不到——这是本后端最大的能力缺口。
+                // HCS 没有公开的取图入口，画面拿不到——本后端最大的能力缺口。
                 native_view: false,
+                display_output: false,
                 shared_dirs: false,
                 shared_dirs_guests: Vec::new(),
                 clipboard: false,
                 auto_resize: false,
                 audio: false,
                 snapshots: false,
+                // 克隆要复制 VHDX（没有写时复制），代价与整盘复制相同；
+                // 与其给出一个看起来能用、实际卡几十秒的按钮，不如先如实标 false。
                 clone: false,
+                // HCS 的虚拟磁盘大小在创建时定死，扩容要离线改 VHDX 再重新挂载。
                 resize_disk: false,
                 rosetta: false,
+                // 只有 NAT 可用；桥接 / 仅主机都要宿主预配置 HCN 网络。
                 bridged_network: false,
-                // HCS 没有 framebuffer 接口，画面拿不到——本后端最大的能力缺口。
-                display_output: false,
             },
         }
     }
@@ -164,16 +180,47 @@ impl Engine for HcsEngine {
             return Err("HCS 只支持 VHDX 磁盘".to_string());
         }
 
+        // 网络：只支持 NAT。不支持的组合要**明确拒绝**，不能静默给一台没网的机器
+        // ——那会表现为「装完系统上不了网」，用户根本想不到是插件的锅。
+        if !config::network_supported(spec.network) {
+            return Err(format!(
+                "HCS 后端只支持 NAT 网络（当前是「{}」）。桥接与仅主机需要宿主预先配置 \
+                 HCS 网络，请切换到 NAT，或在设置里改用 QEMU 引擎。",
+                network_label(spec.network)
+            ));
+        }
+        let net = match network::NatNetwork::create(&spec.id) {
+            Ok(net) => Some(net),
+            Err(reason) => {
+                // 网络建不出来就明确失败，不要退回「无网卡」——用户会以为坏了。
+                return Err(format!("创建 NAT 网络失败：{}", reason));
+            }
+        };
+        let endpoint = net.as_ref().map(|value| value.endpoint_id().to_string());
+
         // 安装介质：仅在文件确实存在时挂上，避免因一处路径笔误让整机起不来。
         let installer = spec
             .installer_path
             .as_ref()
             .filter(|path| std::path::Path::new(path).exists());
-        let document = config::machine_document_text(spec, &disk_text, installer.map(|s| s.as_str()));
+        let document = config::machine_document_text(
+            spec,
+            &disk_text,
+            installer.map(|value| value.as_str()),
+            endpoint.as_deref(),
+        );
 
-        let id = format!("{}{}", ID_PREFIX, crate::paths::sanitize_id(&spec.id));
-        let system = ffi::System::create(api, &id, &document)?;
-        system.start()?;
+        let id = machine_id(&spec.id);
+        let system = match ffi::System::create(api, &id, &document) {
+            Ok(system) => system,
+            Err(reason) => {
+                // 机器没起来，网络也没用了；`net` 会随作用域结束自动释放。
+                return Err(reason);
+            }
+        };
+        if let Err(reason) = system.start() {
+            return Err(reason);
+        }
 
         with_machines(|machines| {
             machines.insert(
@@ -181,6 +228,7 @@ impl Engine for HcsEngine {
                 ManagedVm {
                     system,
                     prepared_disk: Some(disk_path),
+                    net,
                     last_error: String::new(),
                     paused: false,
                 },
@@ -191,8 +239,9 @@ impl Engine for HcsEngine {
 
     fn stop(&self, spec: &VmSpec) -> Result<(), String> {
         let managed = with_machines(|machines| machines.remove(&spec.id));
-        let Some(managed) = managed else {
-            return Ok(());
+        let Some(mut managed) = managed else {
+            // 不在表里不代表没在跑：可能是上次进程遗留的。尽力关掉它。
+            return self.terminate_orphan(&spec.id);
         };
         // 先试优雅关机，失败再强杀——强杀会丢客户机未落盘的数据。
         if let Err(graceful) = managed.system.shutdown() {
@@ -201,6 +250,9 @@ impl Engine for HcsEngine {
                 .terminate()
                 .map_err(|force| format!("{}；强制关闭也失败：{}", graceful, force))?;
         }
+        // 网络必须在机器停下来之后再拆（先拆端点会让 HCS 报设备错误）。
+        // 显式 take 而不是等 Drop：Drop 顺序依赖字段声明，太脆。
+        managed.net.take();
         Ok(())
     }
 
@@ -256,7 +308,7 @@ impl Engine for HcsEngine {
     }
 
     fn attach_view(&self, _spec: &VmSpec, _rect: ViewRect) -> Result<(), String> {
-        Err("HCS 后端不提供客户机画面：它没有 framebuffer 接口".to_string())
+        Err("HCS 后端不提供客户机画面：它没有公开的取图接口".to_string())
     }
 
     fn update_view_rect(&self, _spec: &VmSpec, _rect: ViewRect) -> Result<(), String> {
@@ -274,9 +326,80 @@ impl Engine for HcsEngine {
                 .map(|(_, managed)| managed)
                 .collect::<Vec<_>>()
         });
-        for managed in drained {
+        for mut managed in drained {
             let _ = managed.system.shutdown();
             let _ = managed.system.terminate();
+            managed.net.take();
         }
+    }
+}
+
+impl HcsEngine {
+    /// 关掉一台「不在托管表里、但 HCS 里还在」的机器。
+    ///
+    /// 这条路径专治孤儿：插件崩溃或宿主重启后，上一轮的机器可能还在跑，
+    /// 而内存里的表已经空了。以前这种情况只能靠用户去任务管理器里杀
+    /// vmwp.exe，或者干脆重启系统。
+    fn terminate_orphan(&self, spec_id: &str) -> Result<(), String> {
+        let api = match ffi::api() {
+            Ok(api) => api,
+            Err(_) => return Ok(()),
+        };
+        let id = machine_id(spec_id);
+        // 先确认它真的存在，避免对不存在的 id 调用 open 得到一串无意义错误。
+        if !ffi::enumerate(api).iter().any(|item| item == &id) {
+            return Ok(());
+        }
+        let system = ffi::System::open(api, &id)?;
+        if let Err(graceful) = system.shutdown() {
+            system
+                .terminate()
+                .map_err(|force| format!("{}；强制关闭也失败：{}", graceful, force))?;
+        }
+        Ok(())
+    }
+
+    /// 列出所有「前缀是我们的、但不在托管表里」的机器。
+    ///
+    /// **返回的是去掉前缀的 spec id**（不是 HCS 里那串 `otools-vm-<id>`），
+    /// 这样前端可以直接和虚拟机列表对照。真要动手还要走 `kill_orphans`，
+    /// 因为 `stop()` 要求 spec 文件仍然存在。
+    pub fn list_orphans(&self) -> Vec<String> {
+        let api = match ffi::api() {
+            Ok(api) => api,
+            Err(_) => return Vec::new(),
+        };
+        let managed: Vec<String> =
+            with_machines(|machines| machines.keys().cloned().collect());
+        ffi::enumerate(api)
+            .into_iter()
+            .filter(|id| id.starts_with(ID_PREFIX))
+            .map(|id| id[ID_PREFIX.len()..].to_string())
+            .filter(|id| !managed.contains(id))
+            .collect()
+    }
+
+    /// 收掉指定的孤儿机器，返回 (成功, 失败)。
+    ///
+    /// 参数是 `list_orphans()` 给出的 spec id。**逐个处理**：一台失败不该
+    /// 连累其余——残留的机器越少越好，能收几台是几台。
+    pub fn kill_orphans(&self, spec_ids: &[String]) -> (Vec<String>, Vec<String>) {
+        let mut killed = Vec::new();
+        let mut failed = Vec::new();
+        for spec_id in spec_ids {
+            match self.terminate_orphan(spec_id) {
+                Ok(()) => killed.push(spec_id.clone()),
+                Err(_) => failed.push(spec_id.clone()),
+            }
+        }
+        (killed, failed)
+    }
+}
+
+fn network_label(mode: NetworkMode) -> &'static str {
+    match mode {
+        NetworkMode::Nat => "NAT",
+        NetworkMode::Bridged => "桥接",
+        NetworkMode::HostOnly => "仅主机",
     }
 }

@@ -227,5 +227,10 @@
   "vm.qemu.reprobe": "再検出",
   "vm.qemu.downloading": "ダウンロード中…",
   "vm.qemu.installing": "インストール中…",
-  "vm.qemu.done": "QEMU をインストールしました。"
+  "vm.qemu.done": "QEMU をインストールしました。",
+  "vm.hcs.orphanTitle": "前回の仮想マシンがまだ実行中です",
+  "vm.hcs.orphanLead": "前回ホストが異常終了した際に {count} 台の仮想マシンが残りました。左の一覧には表示されませんが、メモリとディスクファイルを占有しています。ここで整理できます。",
+  "vm.hcs.orphanKill": "すべて整理",
+  "vm.hcs.orphanKilled": "残っていた仮想マシンを整理しました",
+  "vm.hcs.orphanPartial": "{done} 台を整理しましたが、{rest} 台を停止できませんでした。再試行するかシステムを再起動してください。"
 }
