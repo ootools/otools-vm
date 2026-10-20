@@ -68,6 +68,76 @@ fn has_extension(path: &Path, expected: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// 该路径是否是需要走 VHDX 专用扩容的虚拟磁盘。
+///
+/// 判断依据是扩展名而不是「HCS 在用什么」：调用方（`store::resize_disk`）
+/// 拿到的可能是原始 `spec.disk_path`，而 HCS 实际挂载的是同名 `.vhdx`。
+/// 只要看到虚拟磁盘扩展名，就**绝不能**用 `set_len`——那会把文件撑大但
+/// 不更新 VHDX 元数据，客户机里看到的容量不变，宿主上却白占几十 GB。
+pub fn is_virtual_disk(path: &Path) -> bool {
+    has_extension(path, "vhdx") || has_extension(path, "vhd")
+}
+
+/// 扩容 VHDX/VHD 的虚拟容量。
+///
+/// 用 `diskpart` 的 `expand vdisk`：它会同时更新 VHDX 的元数据与 BAT 表，
+/// 这是 `set_len` 做不到的。`diskpart` 是系统自带，不引入额外依赖。
+///
+/// ⚠️ 宿主侧扩完只是「块设备变大了」，客户机里还要自己扩分区/文件系统。
+pub fn expand_vhdx(path: &Path, size_gb: u64) -> Result<(), String> {
+    if !path.exists() {
+        return Err(format!("虚拟磁盘不存在：{}", path.display()));
+    }
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| format!("取当前目录失败: {}", error))?
+            .join(path)
+    };
+    let size_mb = size_gb.max(1) * 1024;
+    let script = format!(
+        "select vdisk file=\"{}\"\nexpand vdisk maximum={}\n",
+        absolute.display(),
+        size_mb
+    );
+
+    let mut child = Command::new("diskpart")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("无法启动 diskpart: {}", error))?;
+
+    use std::io::Write;
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin
+            .write_all(script.as_bytes())
+            .map_err(|error| format!("写入 diskpart 脚本失败: {}", error))?;
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("diskpart 执行失败: {}", error))?;
+
+    // diskpart 退出码不可靠，所以还要在输出里找失败字样。
+    // 「只能扩大」由调用方保证，这里只负责把 diskpart 的真实报错带出来。
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lower = stdout.to_ascii_lowercase();
+    if output.status.success() && !lower.contains("error") && !lower.contains("失败") {
+        return Ok(());
+    }
+    Err(format!(
+        "扩容虚拟磁盘失败（{}）：{}",
+        absolute.display(),
+        stdout
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .last()
+            .unwrap_or("")
+            .trim()
+    ))
+}
+
 /// 用 `diskpart` 建一块可扩展（dynamic）VHDX。
 ///
 /// 选它而不是自己写文件：VHDX 是带校验和的复合格式，`diskpart` 是系统自带、
@@ -171,5 +241,18 @@ mod tests {
         assert!(has_extension(Path::new("C:/vm/disk.vhdx"), "vhdx"));
         assert!(!has_extension(Path::new("C:/vm/disk.raw"), "vhdx"));
         assert!(!has_extension(Path::new("C:/vm/disk"), "vhdx"));
+    }
+
+    /// 回归：虚拟磁盘绝不能被当成「长度即容量」的普通文件。
+    ///
+    /// `store::resize_disk` 用这个判定决定走 `diskpart expand` 还是 `set_len`。
+    /// 判错就会静默撑大文件、客户机容量却不变。
+    #[test]
+    fn virtual_disks_are_not_plain_files() {
+        assert!(is_virtual_disk(Path::new("C:/vm/disk.vhdx")));
+        assert!(is_virtual_disk(Path::new("C:/vm/disk.VHD")));
+        assert!(!is_virtual_disk(Path::new("C:/vm/disk.raw")));
+        assert!(!is_virtual_disk(Path::new("C:/vm/disk.qcow2")));
+        assert!(!is_virtual_disk(Path::new("C:/vm/disk")));
     }
 }

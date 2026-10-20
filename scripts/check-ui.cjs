@@ -16,7 +16,8 @@
  * 4. 选完目录会问 `vm_disk_space` 并显示可用空间；
  * 5. 遗留的孤儿虚拟机能列出、能一键清理，且**不误走 `vm_stop`**；
  * 6. 没有展开入口时（欢迎页）不给出「收起侧栏」把手；
- * 7. 选中虚拟机后可收起，并能从工具栏展开。
+ * 7. 选中虚拟机后可收起，并能从工具栏展开；
+ * 8. 运行中设置面板只放开内存，其余配置被 inert 锁住。
  */
 const { chromium } = require('playwright');
 const http = require('http');
@@ -53,9 +54,9 @@ const HOST_STUB = `
 window.__calls = [];
 window.__dialogPath = 'D:/VMs/storage';
 
-function engineInfo(available) {
+function engineInfo(available, kind) {
   return {
-    kind: 'qemu',
+    kind: kind || 'qemu',
     available: available,
     label: 'QEMU',
     reason: available ? '' : '未找到 qemu-system-*。可以在设置里一键获取，装好后无需重启宿主。',
@@ -82,7 +83,9 @@ window.otools = {
     window.__calls.push({ command: command, payload: payload });
     switch (command) {
       case 'vm_get_workspace':
-        return { engine: engineInfo(false), vms: window.__vms || [], host: {
+        // 默认「引擎不可用」——那正是用例 1 要测的场景。需要其它组合的用例
+        // 自己预置 __engineAvailable / __engineKind。
+        return { engine: engineInfo(window.__engineAvailable === true, window.__engineKind), vms: window.__vms || [], host: {
           os: 'Windows 11', arch: 'x86_64', hostname: 'TEST', recommendedCpus: 8,
           recommendedMemoryMb: 16384, totalMemoryMb: 32768 } };
       case 'vm_hcs_status':
@@ -308,6 +311,44 @@ function fakeVm(id, name) {
         check('点展开后侧栏回来', (await page.locator('.vm-sidebar').count()) > 0);
       }
     }
+  }
+
+  console.log('\n[8] 运行中设置面板：只放开内存，其余锁定');
+  // 用 HCS 引擎 + 运行中的机器：这是唯一允许热调内存的组合。
+  const runningVm = { ...fakeVm('vm-live', '运行中'), state: 'running' };
+  await page.addInitScript(
+    `window.__vms = [${JSON.stringify(runningVm)}]; window.__engineKind = 'hcs'; window.__engineAvailable = true;`,
+  );
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  await page.locator('.vm-item').first().click();
+  await page.waitForTimeout(500);
+  // 打开设置抽屉。工具栏末尾是「设置」「删除」两个圆形按钮，删除在最后，
+  // 所以取倒数第二个——取 last() 会把机器删掉，抽屉里没有 vm 就只剩空壳。
+  const settingsBtn = page.locator('.vm-toolbar-actions button').nth(-2);
+  await settingsBtn.click();
+  await page.waitForTimeout(700);
+  const drawer = page.locator('.el-drawer');
+  check('设置抽屉已打开', (await drawer.count()) > 0);
+  if (await drawer.count()) {
+    const drawerText = await drawer.innerText();
+    check('提示「只能调整内存」', drawerText.includes('只能调整内存'), drawerText.slice(0, 300));
+    // 回归：内存滑块必须仍可用（这是唯一的例外），CPU 必须锁住。
+    // 用 inert 而不是逐个 :disabled —— 断言点就落在 inert 容器上。
+    const nameLocked = await page.locator('.vm-settings-name').evaluate(
+      (node) => node.hasAttribute('inert'),
+    );
+    const restLocked = await page.locator('.vm-settings-rest').evaluate(
+      (node) => node.hasAttribute('inert'),
+    );
+    check('名字等配置被 inert 锁住', nameLocked === true);
+    check('其余配置被 inert 锁住', restLocked === true);
+    // 内存滑块在锁区之外，应当还能拖
+    const memSlider = page.locator('.vm-settings-section').filter({ hasText: '内存' }).locator('.el-slider').first();
+    const memDisabled = await memSlider.evaluate((node) =>
+      node.classList.contains('is-disabled'),
+    );
+    check('内存滑块仍可用', memDisabled === false);
   }
 
   await browser.close();

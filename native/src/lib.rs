@@ -243,6 +243,17 @@ fn cmd_create(payload: &Value) -> Result<Value, String> {
     serde_json::to_value(summary_for(engine.as_ref(), &spec)).map_err(|error| error.to_string())
 }
 
+/// 这次改动是否**只**动了内存。
+///
+/// 运行中的虚拟机只允许热调内存；其余字段（CPU、共享目录、网卡、引导项……）
+/// 都是创建期决定的。判定方式是「把内存还原成旧值后与旧规格整体比较」，
+/// 而不是逐个字段比对——`VmSpec` 字段会一直增加，漏一个就是静默的配置错乱。
+fn only_memory_changed(before: &model::VmSpec, after: &model::VmSpec) -> bool {
+    let mut probe = after.clone();
+    probe.memory_mb = before.memory_mb;
+    probe == *before
+}
+
 fn cmd_update(payload: &Value) -> Result<Value, String> {
     let input: VmUpdateInput = serde_json::from_value(payload.clone())
         .map_err(|error| format!("更新参数解析失败: {}", error))?;
@@ -250,10 +261,16 @@ fn cmd_update(payload: &Value) -> Result<Value, String> {
     let engine = engine();
     let mut spec = store::load_spec(&input.id)?;
 
-    let running = engine.state(&spec);
-    if running.is_busy() || running == model::VmState::Running || running == model::VmState::Paused {
-        return Err("请先关闭虚拟机再修改配置".to_string());
+    let state = engine.state(&spec);
+    let live = state == model::VmState::Running || state == model::VmState::Paused;
+    if state.is_busy() {
+        return Err("虚拟机正在切换状态，请稍后再试".to_string());
     }
+
+    // 先记下原值，改完后对比：只有「内存」变了才允许在运行中应用。
+    // 这个判断必须基于**改完之后的完整规格**，而不是看 input 里带了哪些字段
+    // —— 前端每次都把整份表单回传，只看字段有无会把「什么都没改」也当成变更。
+    let before = spec.clone();
 
     spec.name = input.name;
     spec.cpus = input.cpus;
@@ -325,6 +342,36 @@ fn cmd_update(payload: &Value) -> Result<Value, String> {
         spec.notes = value;
     }
     spec.validate()?;
+
+    if live {
+        // 运行中只允许改内存。其余字段（CPU、共享目录、网卡、引导项……）
+        // 都是创建期决定的，热改要么 HCS 不支持、要么会让客户机状态不一致。
+        //
+        // 判定方式：把内存改回原值后与旧规格整体比较。不逐个字段比对是因为
+        // 字段会一直增加，漏一个就是静默的配置错乱。
+        if !only_memory_changed(&before, &spec) {
+            return Err("虚拟机运行中只能调整内存，其它配置请先关机".to_string());
+        }
+        if spec.memory_mb == before.memory_mb {
+            // 什么都没变，直接返回当前状态，不必走一次 modify。
+            return serde_json::to_value(summary_for(engine.as_ref(), &spec))
+                .map_err(|error| error.to_string());
+        }
+        #[cfg(target_os = "windows")]
+        {
+            if engine.info().kind == "hcs" {
+                let hcs = engine::hcs::HcsEngine::create();
+                hcs.set_memory_live(&spec.id, spec.memory_mb)?;
+            } else {
+                return Err("当前引擎不支持运行中调整内存，请先关闭虚拟机".to_string());
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            return Err("当前引擎不支持运行中调整内存，请先关闭虚拟机".to_string());
+        }
+    }
+
     store::save_spec(&spec)?;
 
     serde_json::to_value(summary_for(engine.as_ref(), &spec)).map_err(|error| error.to_string())
@@ -1043,6 +1090,47 @@ mod tests {
     fn id_is_required() {
         assert!(read_id(&json!({})).is_err());
         assert_eq!(read_id(&json!({ "id": " abc " })).unwrap(), "abc");
+    }
+
+    /// 运行中热调只放行内存。
+    ///
+    /// 这条判定的反面代价很高：如果放宽了，用户能在运行中改 CPU 数，规格
+    /// 存下来了但客户机里没变，重启后行为才算数——典型的「静默不一致」。
+    #[test]
+    fn live_update_accepts_memory_only() {
+        // 用 JSON 构造而不是逐个字段赋值：`VmSpec` 字段很多且有 serde 默认值，
+        // 手写构造每次加字段都要改测试，等于让测试跟不上模型演进。
+        let base: model::VmSpec = serde_json::from_value(json!({
+            "id": "vm-test",
+            "name": "测试机",
+            "os": "linux",
+            "arch": "x86_64",
+            "cpus": 4,
+            "memoryMb": 4096,
+            "diskPath": "C:/vm/test.raw",
+            "diskSizeGb": 40
+        }))
+        .expect("基准规格应当能构造");
+
+        assert!(only_memory_changed(&base, &base), "什么都没改应当放行");
+
+        let mut more_memory = base.clone();
+        more_memory.memory_mb = base.memory_mb + 1024;
+        assert!(only_memory_changed(&base, &more_memory), "只改内存应当放行");
+
+        let mut more_cpus = base.clone();
+        more_cpus.cpus = base.cpus + 2;
+        assert!(!only_memory_changed(&base, &more_cpus), "改 CPU 必须被拒");
+
+        let mut renamed = base.clone();
+        renamed.name = format!("{}-x", base.name);
+        assert!(!only_memory_changed(&base, &renamed), "改名字必须被拒");
+
+        // 内存和别的字段一起改：不能因为「有内存变化」就整体放行。
+        let mut both = base.clone();
+        both.memory_mb = base.memory_mb + 1024;
+        both.cpus = base.cpus + 2;
+        assert!(!only_memory_changed(&base, &both), "内存+CPU 必须被拒");
     }
 
     #[test]

@@ -232,5 +232,7 @@
   "vm.hcs.orphanLead": "이전에 호스트가 비정상 종료되면서 가상 머신 {count}대가 남았습니다. 왼쪽 목록에는 없지만 메모리와 디스크 파일을 계속 점유하고 있습니다. 여기서 정리할 수 있습니다.",
   "vm.hcs.orphanKill": "모두 정리",
   "vm.hcs.orphanKilled": "남아 있던 가상 머신을 정리했습니다",
-  "vm.hcs.orphanPartial": "{done}대를 정리했지만 {rest}대를 중지하지 못했습니다. 다시 시도하거나 시스템을 재시작하세요."
+  "vm.hcs.orphanPartial": "{done}대를 정리했지만 {rest}대를 중지하지 못했습니다. 다시 시도하거나 시스템을 재시작하세요.",
+  "vm.settings.liveMemory": "가상 머신이 실행 중입니다. 여기서는 메모리만 변경할 수 있으며, 나머지 설정은 전원을 끈 뒤 변경하세요.",
+  "vm.settings.liveReadonly": "가상 머신이 실행 중이며 현재 엔진은 실행 중 설정 변경을 지원하지 않습니다. 먼저 전원을 끄세요."
 }

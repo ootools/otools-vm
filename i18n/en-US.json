@@ -232,5 +232,7 @@
   "vm.hcs.orphanLead": "{count} virtual machine(s) were left behind when the host exited unexpectedly. They are not listed on the left but still hold memory and disk files. You can clean them up here.",
   "vm.hcs.orphanKill": "Clean up all",
   "vm.hcs.orphanKilled": "Leftover virtual machines cleaned up",
-  "vm.hcs.orphanPartial": "Cleaned up {done}, but {rest} could not be stopped. Retry or restart the system."
+  "vm.hcs.orphanPartial": "Cleaned up {done}, but {rest} could not be stopped. Retry or restart the system.",
+  "vm.settings.liveMemory": "The VM is running: only memory can be changed here. Power it off to edit anything else.",
+  "vm.settings.liveReadonly": "The VM is running and the current engine cannot change settings live. Power it off first."
 }

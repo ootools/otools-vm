@@ -155,6 +155,10 @@ fn clone_file(source: &std::path::Path, target: &std::path::Path) -> Result<(), 
 ///
 /// ⚠️ 宿主侧扩完只是「块设备变大了」，客户机里还要自己扩分区/文件系统：
 /// Linux `growpart` + `resize2fs`，Windows 在「磁盘管理」里扩展卷。
+///
+/// **虚拟磁盘（VHD/VHDX）必须走专用路径**：`set_len` 只会把文件撑大，不会
+/// 更新 VHDX 的元数据与 BAT 表，结果就是宿主上白占几十 GB、客户机里容量
+/// 一点没变。这种「看起来成功、实际没生效」必须直接报错，不能放过去。
 pub fn resize_disk(spec: &VmSpec, new_size_gb: u64) -> Result<u64, String> {
     if new_size_gb < spec.disk_size_gb {
         return Err(format!(
@@ -169,13 +173,41 @@ pub fn resize_disk(spec: &VmSpec, new_size_gb: u64) -> Result<u64, String> {
     if !path.exists() {
         return Err(format!("系统盘不存在：{}", spec.disk_path));
     }
+
+    // HCS 后端挂的是同名 `.vhdx`，而 `spec.disk_path` 仍是 `.raw`。
+    // 两块都要照顾：先扩真正在用的那块，再同步原始盘，避免下次切回 QEMU
+    // 时容量倒退。
+    #[cfg(target_os = "windows")]
+    {
+        use crate::engine::hcs::disk;
+
+        if disk::is_virtual_disk(path) {
+            disk::expand_vhdx(path, new_size_gb)?;
+            return Ok(new_size_gb);
+        }
+
+        // 原始盘是 RAW，但 HCS 可能已经转出了 .vhdx —— 那块才是客户机看到的。
+        let vhdx = path.with_extension("vhdx");
+        if vhdx.exists() {
+            disk::expand_vhdx(&vhdx, new_size_gb)?;
+            // 顺手把 RAW 也扩上：不扩的话切回 QEMU 会看到旧容量。
+            extend_sparse_file(path, new_size_gb)?;
+            return Ok(new_size_gb);
+        }
+    }
+
+    extend_sparse_file(path, new_size_gb)?;
+    Ok(new_size_gb)
+}
+
+/// 把文件拉长到指定大小（稀疏语义）。仅适用于 RAW 这类「长度即容量」的镜像。
+fn extend_sparse_file(path: &std::path::Path, new_size_gb: u64) -> Result<(), String> {
     let file = std::fs::OpenOptions::new()
         .write(true)
         .open(path)
         .map_err(|error| format!("打开系统盘失败: {}", error))?;
     file.set_len(new_size_gb.saturating_mul(1024 * 1024 * 1024))
-        .map_err(|error| format!("扩容系统盘失败: {}", error))?;
-    Ok(new_size_gb)
+        .map_err(|error| format!("扩容系统盘失败: {}", error))
 }
 
 fn now_seconds() -> i64 {

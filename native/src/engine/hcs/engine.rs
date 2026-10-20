@@ -13,7 +13,7 @@
 //! - **不能**：共享目录（HCS 的 Plan9 共享只服务容器场景）、USB 直通、
 //!   快照存档（`HcsSaveComputeSystem` 存在，但恢复需要配套运行时状态文件，
 //!   v1 不做）。
-//! - **磁盘只吃 VHDX**，见 `disk` 模块。
+//! - **磁盘只吃 VHDX**，见 `disk` 模块；扩容走 `diskpart expand vdisk`。
 //! - **网络只有 NAT**：桥接 / 仅主机都要宿主预配置 HCN 网络，见 `network` 模块。
 //!
 //! 权限是硬门槛：HCS 只允许管理员或 Hyper-V Administrators 组成员。探测阶段
@@ -21,6 +21,8 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+
+use serde_json::json;
 
 use super::super::{Engine, ViewRect};
 use super::{config, disk, ffi, network};
@@ -136,8 +138,10 @@ impl Engine for HcsEngine {
                 // 克隆要复制 VHDX（没有写时复制），代价与整盘复制相同；
                 // 与其给出一个看起来能用、实际卡几十秒的按钮，不如先如实标 false。
                 clone: false,
-                // HCS 的虚拟磁盘大小在创建时定死，扩容要离线改 VHDX 再重新挂载。
-                resize_disk: false,
+                // 扩容走 `diskpart expand vdisk`，会同步更新 VHDX 元数据。
+                // 机器必须处于关机态（`cmd_resize_disk` 已挡），扩完客户机里
+                // 还要自己扩分区/文件系统。
+                resize_disk: true,
                 rosetta: false,
                 // 只有 NAT 可用；桥接 / 仅主机都要宿主预配置 HCN 网络。
                 bridged_network: false,
@@ -393,6 +397,26 @@ impl HcsEngine {
             }
         }
         (killed, failed)
+    }
+
+    /// 运行中调整内存上限。
+    ///
+    /// HCS 的 `ModifySettingRequest` 支持热改 `Memory/SizeInMB`。这里只负责
+    /// 「调大」——调小会让客户机里已占用的内存无处安放，HCS 要么拒绝、要么
+    /// 让客户机直接崩。上层（`cmd_update`）已把非内存变更挡在外面。
+    ///
+    /// **CPU 数量不能在运行中改**：`ProcessorCount` 属于 `ComputeTopology` 的
+    /// 创建期字段，`ModifySettingRequest` 没有对应路径。改 CPU 仍需关机后走
+    /// `vm_update`。
+    pub fn set_memory_live(&self, spec_id: &str, memory_mb: u64) -> Result<(), String> {
+        with_machines(|machines| {
+            let Some(managed) = machines.get(spec_id) else {
+                return Err("该虚拟机未在运行，请直接修改配置".to_string());
+            };
+            managed
+                .system
+                .modify("VirtualMachine/ComputeTopology/Memory/SizeInMB", json!(memory_mb))
+        })
     }
 }
 

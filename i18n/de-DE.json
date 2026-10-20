@@ -232,5 +232,7 @@
   "vm.hcs.orphanLead": "Beim unerwarteten Beenden des Hosts sind {count} virtuelle Maschinen zurückgeblieben. Sie erscheinen nicht in der Liste, belegen aber weiterhin Arbeitsspeicher und Datenträgerdateien. Hier können Sie sie aufräumen.",
   "vm.hcs.orphanKill": "Alle aufräumen",
   "vm.hcs.orphanKilled": "Zurückgebliebene virtuelle Maschinen aufgeräumt",
-  "vm.hcs.orphanPartial": "{done} aufgeräumt, aber {rest} konnten nicht beendet werden. Erneut versuchen oder das System neu starten."
+  "vm.hcs.orphanPartial": "{done} aufgeräumt, aber {rest} konnten nicht beendet werden. Erneut versuchen oder das System neu starten.",
+  "vm.settings.liveMemory": "Die VM läuft: Hier lässt sich nur der Arbeitsspeicher ändern. Für alles andere zuerst ausschalten.",
+  "vm.settings.liveReadonly": "Die VM läuft und die aktuelle Engine kann Einstellungen nicht im Betrieb ändern. Bitte zuerst ausschalten."
 }

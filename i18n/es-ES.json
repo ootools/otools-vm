@@ -232,5 +232,7 @@
   "vm.hcs.orphanLead": "Quedaron {count} máquinas virtuales tras el cierre inesperado del host. No aparecen en la lista, pero siguen ocupando memoria y archivos de disco. Puede limpiarlas aquí.",
   "vm.hcs.orphanKill": "Limpiar todo",
   "vm.hcs.orphanKilled": "Máquinas virtuales restantes limpiadas",
-  "vm.hcs.orphanPartial": "Se limpiaron {done}, pero {rest} no se pudieron detener. Reintente o reinicie el sistema."
+  "vm.hcs.orphanPartial": "Se limpiaron {done}, pero {rest} no se pudieron detener. Reintente o reinicie el sistema.",
+  "vm.settings.liveMemory": "La máquina virtual está en ejecución: aquí solo se puede cambiar la memoria. Apáguela para editar lo demás.",
+  "vm.settings.liveReadonly": "La máquina virtual está en ejecución y el motor actual no permite cambios en caliente. Apáguela primero."
 }

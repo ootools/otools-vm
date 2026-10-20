@@ -232,5 +232,7 @@
   "vm.hcs.orphanLead": "上次宿主意外退出时留下了 {count} 台虚拟机，它们不在左侧列表里，却仍占用内存和磁盘文件。可以在这里直接清理。",
   "vm.hcs.orphanKill": "全部清理",
   "vm.hcs.orphanKilled": "遗留的虚拟机已清理",
-  "vm.hcs.orphanPartial": "已清理 {done} 台，仍有 {rest} 台关闭失败，请重试或重启系统"
+  "vm.hcs.orphanPartial": "已清理 {done} 台，仍有 {rest} 台关闭失败，请重试或重启系统",
+  "vm.settings.liveMemory": "虚拟机正在运行：这里只能调整内存，其它配置请先关机",
+  "vm.settings.liveReadonly": "虚拟机正在运行：当前引擎不支持运行中修改配置，请先关机"
 }
