@@ -607,7 +607,15 @@ fn cmd_set_engine_preference(payload: &Value) -> Result<Value, String> {
         .ok_or_else(|| "缺少 preference".to_string())?;
     let preference = match raw {
         "auto" => settings::EnginePreference::Auto,
-        "hcs" => settings::EnginePreference::Hcs,
+        // HCS 已停用为可选引擎。保留这个分支是为了给旧前端/旧配置一个
+        // 明确的答复，而不是「未知偏好」那种含糊报错。
+        "hcs" => {
+            return Err(
+                "HCS 引擎已停用：它没有画面输出、没有共享目录、也没有端口转发。\
+                 请使用默认的 QEMU（同样通过 WHPX 获得硬件加速）"
+                    .to_string(),
+            )
+        }
         "qemu" => settings::EnginePreference::Qemu,
         other => return Err(format!("未知的引擎偏好: {}", other)),
     };

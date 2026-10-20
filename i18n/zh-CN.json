@@ -237,5 +237,7 @@
   "vm.settings.liveReadonly": "虚拟机正在运行：当前引擎不支持运行中修改配置，请先关机",
   "vm.console.switchToQemu": "切回 QEMU 查看画面",
   "vm.console.switchToQemuHint": "会先关闭这台虚拟机。QEMU 比 HCS 慢一些，但能看到桌面。",
-  "vm.console.switchedToQemu": "已切回 QEMU，重新启动后即可看到画面"
+  "vm.console.switchedToQemu": "已切回 QEMU，重新启动后即可看到画面",
+  "vm.hcs.retiredHint": "你当前使用的是已停用的 HCS 引擎：它没有画面输出，也没有共享目录和端口转发。QEMU 在 Windows 上同样通过 WHPX 获得硬件加速，建议切回。",
+  "vm.hcs.retiredBack": "切回默认引擎"
 }

@@ -237,5 +237,7 @@
   "vm.settings.liveReadonly": "가상 머신이 실행 중이며 현재 엔진은 실행 중 설정 변경을 지원하지 않습니다. 먼저 전원을 끄세요.",
   "vm.console.switchToQemu": "QEMU로 전환해 화면 보기",
   "vm.console.switchToQemuHint": "먼저 이 가상 머신의 전원을 끕니다. QEMU는 HCS보다 느리지만 데스크톱을 볼 수 있습니다.",
-  "vm.console.switchedToQemu": "QEMU로 전환했습니다. 다시 시작하면 화면이 표시됩니다."
+  "vm.console.switchedToQemu": "QEMU로 전환했습니다. 다시 시작하면 화면이 표시됩니다.",
+  "vm.hcs.retiredHint": "현재 사용 중인 HCS 엔진은 지원이 중단되었습니다. 화면 출력, 공유 폴더, 포트 포워딩이 모두 없습니다. Windows의 QEMU도 WHPX로 하드웨어 가속을 받으므로 되돌리는 것을 권장합니다.",
+  "vm.hcs.retiredBack": "기본 엔진으로 되돌리기"
 }

@@ -237,5 +237,7 @@
   "vm.settings.liveReadonly": "仮想マシンは実行中で、現在のエンジンは実行中の設定変更に対応していません。先に電源を切ってください。",
   "vm.console.switchToQemu": "QEMU に切り替えて画面を見る",
   "vm.console.switchToQemuHint": "先にこの仮想マシンの電源を切ります。QEMU は HCS より遅いですが、デスクトップが表示されます。",
-  "vm.console.switchedToQemu": "QEMU に切り替えました。再起動すると画面が表示されます。"
+  "vm.console.switchedToQemu": "QEMU に切り替えました。再起動すると画面が表示されます。",
+  "vm.hcs.retiredHint": "現在は廃止された HCS エンジンを使用しています。画面出力も共有フォルダもポート転送もありません。Windows の QEMU も WHPX でハードウェア加速されるため、戻すことをお勧めします。",
+  "vm.hcs.retiredBack": "既定のエンジンに戻す"
 }

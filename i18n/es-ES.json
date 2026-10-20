@@ -237,5 +237,7 @@
   "vm.settings.liveReadonly": "La máquina virtual está en ejecución y el motor actual no permite cambios en caliente. Apáguela primero.",
   "vm.console.switchToQemu": "Cambiar a QEMU para ver la pantalla",
   "vm.console.switchToQemuHint": "Esta máquina se apagará primero. QEMU es más lento que HCS pero muestra el escritorio.",
-  "vm.console.switchedToQemu": "Cambiado a QEMU. Inicie la máquina de nuevo para ver la pantalla."
+  "vm.console.switchedToQemu": "Cambiado a QEMU. Inicie la máquina de nuevo para ver la pantalla.",
+  "vm.hcs.retiredHint": "Está usando el motor HCS retirado: no tiene salida de vídeo, ni carpetas compartidas, ni reenvío de puertos. En Windows QEMU también obtiene aceleración por hardware vía WHPX, así que se recomienda volver.",
+  "vm.hcs.retiredBack": "Volver al motor predeterminado"
 }

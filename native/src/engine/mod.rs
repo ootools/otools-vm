@@ -185,16 +185,16 @@ pub fn build_engine() -> Box<dyn Engine> {
     {
         let settings = crate::settings::load();
         if settings.engine_preference == crate::settings::EnginePreference::Hcs {
-            let candidate = hcs::HcsEngine::create();
-            let reason = {
-                let info = candidate.info();
-                if info.available {
-                    return Box::new(candidate);
-                }
-                info.reason
-            };
-            eprintln!("[vm] 已选 HCS 但不可用: {}，回落到 QEMU", reason);
-            return Box::new(qemu::QemuEngine::create_or_noop(reason));
+            // HCS 已停用为可选引擎：它没有画面、没有共享目录、没接端口转发，
+            // 而它在 Windows 上唯一的长处（CPU 由 Hyper-V 直接执行）QEMU 通过
+            // WHPX 本来就有。继续尊重旧偏好只会把人锁在黑屏里。
+            //
+            // 这里直接回落 QEMU 并**改写偏好**，而不是每次启动都念一遍原因：
+            // 用户不该为了让软件回到正常状态而去别的页面点按钮。
+            eprintln!("[vm] HCS 已停用，回落到 QEMU（旧偏好已自动改写）");
+            let mut current = crate::settings::load();
+            current.engine_preference = crate::settings::EnginePreference::Auto;
+            let _ = crate::settings::save(&current);
         }
         return Box::new(qemu::QemuEngine::create_or_noop(String::new()));
     }

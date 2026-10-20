@@ -53,30 +53,30 @@ const noDisplay = computed(
 );
 
 /**
- * HCS 引擎的可选性。
+ * HCS 引擎状态。
  *
- * 只在本机能用 HCS 时才渲染这一项——列一个装不了的选项只会让人以为要自己
- * 去想办法装。状态文案区分「缺权限」和「缺组件」，两者解决方式完全不同。
+ * **不再作为用户可选项暴露**。原因不是「没做完」，而是它的定位站不住：
+ * 它在 Windows 上唯一标榜的「CPU 由 Hyper-V 直接执行」，QEMU 后端通过 WHPX
+ * 本来就已经具备；而它没有画面（无公开 framebuffer 接口）、没有共享目录、
+ * 没有音频、没接端口转发——用户建完机器、点启动，会面对一个黑屏且在 NAT
+ * 后面连不进去的空转进程。
+ *
+ * 保留探测与后端代码（将来做无头场景的基础），但界面上不提供入口，
+ * 避免用户掉进这个坑。
  */
 const hcs = ref<HcsStatus | null>(null);
 const settings = ref<VmSettings | null>(null);
 const savingEngine = ref(false);
 
-const hcsUsable = computed(() => hcs.value?.supported === true && hcs.value?.available === true);
-
-const engineOptions = computed(() => {
-  const options = [
-    { value: 'auto' as EnginePreference, label: t('vm.engine.prefAuto'), hint: t('vm.engine.prefAutoHint') },
-  ];
-  if (hcsUsable.value) {
-    options.push({
-      value: 'hcs' as EnginePreference,
-      label: t('vm.hcs.title'),
-      hint: t('vm.hcs.diskVhdx'),
-    });
-  }
-  return options;
-});
+/**
+ * 引擎选项只保留「默认（QEMU）」。
+ *
+ * 这里刻意不按 `hcsUsable` 追加 HCS：它现在不可选。如果将来接上端口转发、
+ * 明确转成「无头专用」，再把入口加回来，并在文案里写清代价。
+ */
+const engineOptions = computed(() => [
+  { value: 'auto' as EnginePreference, label: t('vm.engine.prefAuto'), hint: t('vm.engine.prefAutoHint') },
+]);
 
 onMounted(async () => {
   try {
@@ -329,7 +329,15 @@ const killOrphans = async (): Promise<void> => {
           </p>
         </div>
 
-        <div v-if="hcs?.supported" class="vm-welcome-card">
+        <!--
+          HCS 已不再作为可选引擎。但**已经选了 HCS 的用户**（旧版本存下的偏好）
+          必须看到出口，否则他们被永久困在「没有画面」的后端里。
+          正常情况下 engineOptions 只有一项，这块不渲染。
+        -->
+        <div
+          v-if="hcs?.supported && (settings?.enginePreference === 'hcs' || engineOptions.length > 1)"
+          class="vm-welcome-card"
+        >
           <h4>{{ t('vm.engine.prefTitle') }}</h4>
           <p class="vm-welcome-engine">
             {{ hcs.available ? t('vm.hcs.available') : t('vm.hcs.needsElevation') }}
@@ -348,6 +356,15 @@ const killOrphans = async (): Promise<void> => {
               {{ option.label }}
             </el-radio>
           </el-radio-group>
+          <!-- 误入 HCS 的旧用户：告诉他们现在为什么不该用，并给一键回退 -->
+          <template v-else-if="settings?.enginePreference === 'hcs'">
+            <p class="vm-welcome-reason">{{ t('vm.hcs.retiredHint') }}</p>
+            <div class="vm-qemu-actions">
+              <el-button size="small" type="primary" :loading="savingEngine" @click="changeEngine('auto')">
+                {{ t('vm.hcs.retiredBack') }}
+              </el-button>
+            </div>
+          </template>
         </div>
 
         <!--

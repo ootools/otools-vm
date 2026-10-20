@@ -237,5 +237,7 @@
   "vm.settings.liveReadonly": "Die VM läuft und die aktuelle Engine kann Einstellungen nicht im Betrieb ändern. Bitte zuerst ausschalten.",
   "vm.console.switchToQemu": "Zu QEMU wechseln für Bildausgabe",
   "vm.console.switchToQemuHint": "Diese VM wird zuerst ausgeschaltet. QEMU ist langsamer als HCS, zeigt aber den Desktop.",
-  "vm.console.switchedToQemu": "Zu QEMU gewechselt. Nach dem erneuten Start ist die Anzeige verfügbar."
+  "vm.console.switchedToQemu": "Zu QEMU gewechselt. Nach dem erneuten Start ist die Anzeige verfügbar.",
+  "vm.hcs.retiredHint": "Sie verwenden die eingestellte HCS-Engine: keine Bildausgabe, keine freigegebenen Ordner, keine Portweiterleitung. QEMU erhält unter Windows ebenfalls Hardwarebeschleunigung über WHPX – ein Wechsel zurück wird empfohlen.",
+  "vm.hcs.retiredBack": "Zurück zur Standard-Engine"
 }

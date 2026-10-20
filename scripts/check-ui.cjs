@@ -16,6 +16,7 @@
  * 4. 选完目录会问 `vm_disk_space` 并显示可用空间；
  * 5. 遗留的孤儿虚拟机能列出、能一键清理，且**不误走 `vm_stop`**；
  * 6. 没有展开入口时（欢迎页）不给出「收起侧栏」把手；
+ * 6b. HCS 不再作为可选引擎出现（它没有画面，而 QEMU 同样有 WHPX 加速）；
  * 7. 选中虚拟机后可收起，并能从工具栏展开；
  * 8. 运行中设置面板只放开内存，其余配置被 inert 锁住；
  * 9. HCS 无画面时给出一键切回 QEMU 的出口，且**先关机再切引擎**。
@@ -307,6 +308,16 @@ function fakeVm(id, name) {
   check('欢迎页没有「收起侧栏」把手', (await collapseHandle.count()) === 0);
   // 欢迎页仍在，说明侧栏没被误收起
   check('欢迎页侧栏可见', (await page.locator('.vm-sidebar').count()) > 0);
+
+  console.log('\n[6b] HCS 不再作为可选引擎出现');
+  // 即便本机 HCS 完全可用，也不该给用户这个入口：它没有画面、没有共享目录、
+  // 没接端口转发，而它唯一的长处（Hyper-V 直接执行 CPU）QEMU 通过 WHPX 也有。
+  await page.addInitScript(`window.__vms = []; window.__engineAvailable = true;`);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  const welcomeText = await page.locator('body').innerText();
+  check('欢迎页没有 HCS 选项', !welcomeText.includes('HCS 引擎'), welcomeText.slice(0, 300));
+  check('没有引擎单选项', (await page.locator('.el-radio-group').count()) === 0 || !welcomeText.includes('默认（QEMU）'));
 
   console.log('\n[7] 选中虚拟机时可以收起，并能从工具栏展开');
   await page.addInitScript(`window.__vms = [${JSON.stringify(fakeVm('vm-solo', '单机'))}];`);
