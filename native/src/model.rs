@@ -493,6 +493,12 @@ pub struct EngineCaps {
     /// Rosetta 目录共享是否受支持（宿主装没装由运行时再查一次）。
     pub rosetta: bool,
     pub bridged_network: bool,
+    /// 该后端能否把客户机画面送出来（内嵌视图或独立窗口都算）。
+    ///
+    /// `false` 意味着**任何**画面都拿不到，不只是不能内嵌——HCS 就是这种：
+    /// 它没有 framebuffer 接口，商业实现都得自带签名内核显示驱动。
+    /// 前端据此隐藏「控制台」入口，并在详情里说明，而不是让用户对着黑屏猜。
+    pub display_output: bool,
 }
 
 impl EngineCaps {
@@ -509,6 +515,7 @@ impl EngineCaps {
             resize_disk: false,
             rosetta: false,
             bridged_network: false,
+            display_output: false,
         }
     }
 }

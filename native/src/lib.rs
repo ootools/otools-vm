@@ -11,6 +11,7 @@
 pub mod engine;
 pub mod model;
 pub mod paths;
+pub mod settings;
 pub mod store;
 
 use std::sync::{Arc, OnceLock};
@@ -450,6 +451,63 @@ fn cmd_network_interfaces() -> Result<Value, String> {
 /// 各网络模式在当前宿主上的可用性：能不能用、不能用时为什么、怎么解决。
 ///
 /// 前端据此禁用不可选模式并直接展示 `reason`，而不是让用户点了才看到启动失败。
+fn cmd_get_settings() -> Result<Value, String> {
+    serde_json::to_value(settings::load()).map_err(|error| error.to_string())
+}
+
+/// 切换引擎偏好。
+///
+/// 只写设置、不切换本进程已选定的引擎：引擎是进程级单例，切换需要重启插件
+/// 并让所有虚拟机先停下——那不是一次设置修改该附带的行为。前端负责在提示
+/// 「重启后生效」之前先确认没有运行中的机器。
+fn cmd_set_engine_preference(payload: &Value) -> Result<Value, String> {
+    let raw = payload
+        .get("preference")
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| "缺少 preference".to_string())?;
+    let preference = match raw {
+        "auto" => settings::EnginePreference::Auto,
+        "hcs" => settings::EnginePreference::Hcs,
+        "qemu" => settings::EnginePreference::Qemu,
+        other => return Err(format!("未知的引擎偏好: {}", other)),
+    };
+    let mut current = settings::load();
+    current.engine_preference = preference;
+    settings::save(&current)?;
+    serde_json::to_value(current).map_err(|error| error.to_string())
+}
+
+/// HCS 引擎的可用性详情。
+///
+/// 单独给前端一个命令（而不是只看 `vm_engine_info` 的 reason 字符串），因为
+/// 用户要据此做动作：缺权限去提权，缺组件去开系统功能——两者完全不同。
+#[cfg(target_os = "windows")]
+fn cmd_hcs_status() -> Result<Value, String> {
+    let probe = engine::hcs::probe();
+    Ok(json!({
+        "supported": true,
+        "available": probe.available,
+        "needsElevation": probe.needs_elevation,
+        "elevated": engine::hcs::is_elevated(),
+        "inHyperVAdmins": engine::hcs::in_hyperv_admins(),
+        "reason": probe.reason,
+        "version": probe.version,
+    }))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn cmd_hcs_status() -> Result<Value, String> {
+    Ok(json!({
+        "supported": false,
+        "available": false,
+        "needsElevation": false,
+        "elevated": false,
+        "inHyperVAdmins": false,
+        "reason": engine::hcs::unsupported_reason(),
+        "version": "",
+    }))
+}
+
 fn cmd_network_backend(payload: &Value) -> Result<Value, String> {
     let mut items = Vec::new();
     for mode in [
@@ -629,6 +687,9 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
         "vm_resize_disk" => cmd_resize_disk(&payload),
         "vm_network_interfaces" => cmd_network_interfaces(),
         "vm_network_backend" => cmd_network_backend(&payload),
+        "vm_hcs_status" => cmd_hcs_status(),
+        "vm_get_settings" => cmd_get_settings(),
+        "vm_set_engine_preference" => cmd_set_engine_preference(&payload),
         "vm_rosetta_status" => cmd_rosetta_status(),
         "vm_pick_folder" => cmd_pick_folder(&payload),
         "vm_pick_file" => cmd_pick_file(&payload),

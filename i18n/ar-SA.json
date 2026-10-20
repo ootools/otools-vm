@@ -150,6 +150,11 @@
   "vm.create.driverIsoHint": "مثل virtio-win؛ يتيح لمثبّت Windows التعرّف على قرص/NIC virtio عبر «تحميل التعريف».",
   "vm.settings.firmware": "البرنامج الثابت والتعريفات",
   "vm.engine.softwareAccel": "يعمل بمحاكاة برمجية لـ QEMU (بدون تسريع عتادي) — أبطأ. على Windows فعّل «Windows Hypervisor Platform» وأعد التشغيل لتسريع الأداء.",
+  "vm.engine.prefTitle": "المحرك",
+  "vm.engine.prefAuto": "افتراضي (QEMU)",
+  "vm.engine.prefAutoHint": "يدعم الشاشة وأفضل توافقًا",
+  "vm.engine.prefHcs": "HCS (أصلي في Windows)",
+  "vm.engine.prefSaved": "تم حفظ تفضيل المحرك، أعد تشغيل الإضافة لتطبيقه",
   "vm.share.protocol9p": "9p · يعمل على Linux مباشرة",
   "vm.share.protocolVirtiofs": "virtio-fs · يتطلب مضيف Linux",
   "vm.share.virtiofsUnsupported": "يتطلب virtio-fs مضيف Linux مع virtiofsd، وهو غير متوفر على هذا المضيف. استخدم 9p.",
@@ -197,5 +202,15 @@
   "vm.share.protocolSmb": "SMB (مشاركة المضيف الأصلية)",
   "vm.share.smbName": "اسم المشاركة",
   "vm.share.smbHint": "توفّرها خدمة ملفات المضيف؛ لا يحتاج ضيف Windows إلى تعريفات.",
-  "vm.console.mountHintSmb": "في الضيف: net use Z: \\\\{host}\\{name} (أو افتح المسار في المستكشف)"
+  "vm.console.mountHintSmb": "في الضيف: net use Z: \\\\{host}\\{name} (أو افتح المسار في المستكشف)",
+  "vm.console.noDisplayTitle": "هذا المحرك لا يوفر شاشة",
+  "vm.console.noDisplayHint": "لا يملك محرك HCS واجهة لإخراج الشاشة. تبقى الآلة تعمل في الخلفية لكن سطح مكتبها غير مرئي. استخدم محرك QEMU عندما تحتاج إلى شاشة.",
+  "vm.console.noDisplayFoot": "لا يملك HCS واجهة شاشة: الآلة ما زالت تعمل ويمكن إيقافها أو تعليقها",
+  "vm.hcs.title": "محرك HCS",
+  "vm.hcs.available": "متاح",
+  "vm.hcs.needsElevation": "يتطلب صلاحيات المسؤول",
+  "vm.hcs.notSupported": "لنظام Windows فقط",
+  "vm.hcs.reasonElevation": "شغّل OTools كمسؤول لاستخدام HCS، وإلا سيُستخدم QEMU",
+  "vm.hcs.reasonComponent": "فعّل «منصة الجهاز الظاهري» في ميزات Windows ثم أعد التشغيل",
+  "vm.hcs.diskVhdx": "يدعم HCS أقراص VHDX فقط، ويُحوَّل RAW تلقائيًا عند التشغيل"
 }

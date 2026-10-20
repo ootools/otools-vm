@@ -67,7 +67,9 @@ pub fn vm_mac_path(id: &str) -> PathBuf {
 }
 
 /// 插件 id 只允许安全字符，避免路径穿越。
-fn sanitize_id(id: &str) -> String {
+///
+/// HCS 后端的虚拟机 id 也复用它：HCS 的 id 会进系统服务，同样不能带奇怪字符。
+pub fn sanitize_id(id: &str) -> String {
     let cleaned: String = id
         .trim()
         .chars()

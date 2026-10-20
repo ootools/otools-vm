@@ -150,6 +150,11 @@
   "vm.create.driverIsoHint": "e.g. virtio-win; lets Windows Setup detect the virtio disk/NIC via \"Load driver\".",
   "vm.settings.firmware": "Firmware & drivers",
   "vm.engine.softwareAccel": "Running under QEMU software emulation (no hardware acceleration) — slower. On Windows hosts, enable \"Windows Hypervisor Platform\" and restart to speed up.",
+  "vm.engine.prefTitle": "Engine",
+  "vm.engine.prefAuto": "Default (QEMU)",
+  "vm.engine.prefAutoHint": "Has display, best compatibility",
+  "vm.engine.prefHcs": "HCS (Windows native)",
+  "vm.engine.prefSaved": "Engine preference saved; restart the plugin to apply",
   "vm.share.protocol9p": "9p · works on Linux out of the box",
   "vm.share.protocolVirtiofs": "virtio-fs · needs a Linux host",
   "vm.share.virtiofsUnsupported": "virtio-fs needs a Linux host with virtiofsd, which this host does not provide. Use 9p instead.",
@@ -197,5 +202,15 @@
   "vm.share.protocolSmb": "SMB (native host share)",
   "vm.share.smbName": "share name",
   "vm.share.smbHint": "Served by the host file service; Windows guests need no driver.",
-  "vm.console.mountHintSmb": "In the guest: net use Z: \\\\{host}\\{name} (or open the path in Explorer)"
+  "vm.console.mountHintSmb": "In the guest: net use Z: \\\\{host}\\{name} (or open the path in Explorer)",
+  "vm.console.noDisplayTitle": "No display with this backend",
+  "vm.console.noDisplayHint": "The HCS engine has no display output API. The VM keeps running in the background but its desktop is not visible. Use the QEMU backend when you need a screen.",
+  "vm.console.noDisplayFoot": "HCS has no display API: the VM is still running and can be stopped or paused",
+  "vm.hcs.title": "HCS engine",
+  "vm.hcs.available": "Available",
+  "vm.hcs.needsElevation": "Administrator required",
+  "vm.hcs.notSupported": "Windows only",
+  "vm.hcs.reasonElevation": "Run OTools as administrator to use HCS; otherwise QEMU is used",
+  "vm.hcs.reasonComponent": "Enable “Virtual Machine Platform” in Windows Features and reboot",
+  "vm.hcs.diskVhdx": "HCS only supports VHDX disks; RAW disks are converted automatically on start"
 }

@@ -150,6 +150,11 @@
   "vm.create.driverIsoHint": "Напр. virtio-win; позволяет установщику Windows найти virtio-диск/NIC через «Загрузить драйвер».",
   "vm.settings.firmware": "Прошивка и драйверы",
   "vm.engine.softwareAccel": "Работает на программной эмуляции QEMU (без аппаратного ускорения) — медленнее. На Windows включите «Windows Hypervisor Platform» и перезагрузитесь для ускорения.",
+  "vm.engine.prefTitle": "Движок",
+  "vm.engine.prefAuto": "По умолчанию (QEMU)",
+  "vm.engine.prefAutoHint": "Есть изображение, лучшая совместимость",
+  "vm.engine.prefHcs": "HCS (нативный Windows)",
+  "vm.engine.prefSaved": "Настройка сохранена; перезапустите плагин, чтобы применить",
   "vm.share.protocol9p": "9p · работает в Linux без настройки",
   "vm.share.protocolVirtiofs": "virtio-fs · нужен хост Linux",
   "vm.share.virtiofsUnsupported": "virtio-fs требует хост Linux с virtiofsd, которого нет на этом хосте. Используйте 9p.",
@@ -197,5 +202,15 @@
   "vm.share.protocolSmb": "SMB (собственный доступ хоста)",
   "vm.share.smbName": "имя ресурса",
   "vm.share.smbHint": "Предоставляется службой файлов хоста; гостевым Windows драйверы не нужны.",
-  "vm.console.mountHintSmb": "В госте: net use Z: \\\\{host}\\{name} (или откройте путь в проводнике)"
+  "vm.console.mountHintSmb": "В госте: net use Z: \\\\{host}\\{name} (или откройте путь в проводнике)",
+  "vm.console.noDisplayTitle": "Этот бэкенд не даёт изображение",
+  "vm.console.noDisplayHint": "У движка HCS нет API вывода изображения. Виртуальная машина работает в фоне, но её рабочий стол не виден. Для изображения используйте бэкенд QEMU.",
+  "vm.console.noDisplayFoot": "У HCS нет API изображения: машина работает, её можно остановить или приостановить",
+  "vm.hcs.title": "Движок HCS",
+  "vm.hcs.available": "Доступен",
+  "vm.hcs.needsElevation": "Требуются права администратора",
+  "vm.hcs.notSupported": "Только Windows",
+  "vm.hcs.reasonElevation": "Запустите OTools от имени администратора, чтобы использовать HCS; иначе применяется QEMU",
+  "vm.hcs.reasonComponent": "Включите «Платформа виртуальных машин» в компонентах Windows и перезагрузитесь",
+  "vm.hcs.diskVhdx": "HCS поддерживает только диски VHDX; RAW конвертируется автоматически при запуске"
 }

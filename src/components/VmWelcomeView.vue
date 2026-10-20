@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Plus } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
+import { VmApi } from '@/services/vm-api';
 import { vmStore } from '@/state/vm-store';
+import type { EnginePreference, HcsStatus, VmSettings } from '@/types/vm';
 
 const emit = defineEmits<{ (event: 'create'): void }>();
 
@@ -25,6 +28,64 @@ const caps = computed(() => {
     { label: t('vm.welcome.capAudio'), on: value.audio },
   ];
 });
+
+/**
+ * 当前后端完全没有画面输出能力时的说明。
+ *
+ * 只在 HCS 出现（它没有 framebuffer 接口）。必须提前讲清楚，否则用户建好
+ * 机器、点启动、看不到任何东西，会以为功能坏了。
+ */
+const noDisplay = computed(
+  () => Boolean(engine.value) && engine.value?.caps.displayOutput === false,
+);
+
+/**
+ * HCS 引擎的可选性。
+ *
+ * 只在本机能用 HCS 时才渲染这一项——列一个装不了的选项只会让人以为要自己
+ * 去想办法装。状态文案区分「缺权限」和「缺组件」，两者解决方式完全不同。
+ */
+const hcs = ref<HcsStatus | null>(null);
+const settings = ref<VmSettings | null>(null);
+const savingEngine = ref(false);
+
+const hcsUsable = computed(() => hcs.value?.supported === true && hcs.value?.available === true);
+
+const engineOptions = computed(() => {
+  const options = [
+    { value: 'auto' as EnginePreference, label: t('vm.engine.prefAuto'), hint: t('vm.engine.prefAutoHint') },
+  ];
+  if (hcsUsable.value) {
+    options.push({
+      value: 'hcs' as EnginePreference,
+      label: t('vm.hcs.title'),
+      hint: t('vm.hcs.diskVhdx'),
+    });
+  }
+  return options;
+});
+
+onMounted(async () => {
+  try {
+    const [status, current] = await Promise.all([VmApi.getHcsStatus(), VmApi.getSettings()]);
+    hcs.value = status;
+    settings.value = current;
+  } catch {
+    // 探测失败不影响主流程：没有 HCS 信息时就不显示引擎选项。
+  }
+});
+
+const changeEngine = async (preference: EnginePreference): Promise<void> => {
+  savingEngine.value = true;
+  try {
+    settings.value = await VmApi.setEnginePreference(preference);
+    ElMessage.success(t('vm.engine.prefSaved'));
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error));
+  } finally {
+    savingEngine.value = false;
+  }
+};
 </script>
 
 <template>
@@ -53,9 +114,31 @@ const caps = computed(() => {
           </p>
           <p v-if="engine?.reason" class="vm-welcome-reason">{{ engine.reason }}</p>
           <p v-if="softwareAccel" class="vm-welcome-reason">{{ t('vm.engine.softwareAccel') }}</p>
+          <p v-if="noDisplay" class="vm-welcome-reason">{{ t('vm.console.noDisplayHint') }}</p>
           <p v-if="host" class="vm-welcome-host">
             {{ host.os }} / {{ host.arch }} · {{ host.totalMemoryMb }} {{ t('vm.unit.mb') }}
           </p>
+        </div>
+
+        <div v-if="hcs?.supported" class="vm-welcome-card">
+          <h4>{{ t('vm.engine.prefTitle') }}</h4>
+          <p class="vm-welcome-engine">
+            {{ hcs.available ? t('vm.hcs.available') : t('vm.hcs.needsElevation') }}
+          </p>
+          <p v-if="!hcs.available" class="vm-welcome-reason">
+            {{ hcs.needsElevation ? t('vm.hcs.reasonElevation') : t('vm.hcs.reasonComponent') }}
+          </p>
+          <el-radio-group
+            v-if="engineOptions.length > 1"
+            :model-value="settings?.enginePreference ?? 'auto'"
+            size="small"
+            :disabled="savingEngine"
+            @change="(value: string | number | boolean) => changeEngine(value as EnginePreference)"
+          >
+            <el-radio v-for="option in engineOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </el-radio>
+          </el-radio-group>
         </div>
 
         <div class="vm-welcome-card">

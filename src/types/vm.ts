@@ -122,13 +122,44 @@ export interface EngineCaps {
   resizeDisk: boolean;
   rosetta: boolean;
   bridgedNetwork: boolean;
+  /**
+   * 该后端能否输出客户机画面（内嵌视图或独立窗口都算）。
+   *
+   * `false` 表示**任何**画面都拿不到，不只是不能内嵌 —— HCS 就是这种：
+   * 它没有 framebuffer 接口。前端据此隐藏控制台入口并说明原因。
+   */
+  displayOutput: boolean;
+}
+
+/** HCS 引擎的可用性详情（仅 Windows 有意义）。 */
+export interface HcsStatus {
+  supported: boolean;
+  available: boolean;
+  /** true 表示「缺权限」而不是「缺组件」，两者引导方式不同。 */
+  needsElevation: boolean;
+  elevated: boolean;
+  inHyperVAdmins: boolean;
+  reason: string;
+  version: string;
+}
+
+/**
+ * 引擎偏好。
+ *
+ * `auto` 按平台默认（macOS 用 VZ、其它用 QEMU）。`hcs` 只在 Windows 有意义：
+ * 它性能更好但**没有画面输出**，所以必须显式选择。
+ */
+export type EnginePreference = 'auto' | 'hcs' | 'qemu';
+
+export interface VmSettings {
+  enginePreference: EnginePreference;
 }
 
 /** Rosetta 在宿主上的可用状态。 */
 export type RosettaStatus = 'installed' | 'notInstalled' | 'notSupported';
 
 export interface EngineInfo {
-  kind: 'vz' | 'qemu' | 'none';
+  kind: 'vz' | 'qemu' | 'hcs' | 'none';
   available: boolean;
   label: string;
   reason: string;

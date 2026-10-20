@@ -603,6 +603,8 @@ impl Engine for QemuEngine {
                 // Linux 走 tap / 宿主网桥。三者都已接通，具体可用性由
                 // `vm_network_backend` 命令逐项探测后告诉前端。
                 bridged_network: true,
+                // QEMU 自己的窗口能显示画面（只是不能内嵌到插件面板里）。
+                display_output: true,
             },
         }
     }

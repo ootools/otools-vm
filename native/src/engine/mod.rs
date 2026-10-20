@@ -1,14 +1,17 @@
 //! 引擎抽象层。
 //!
-//! 设计目标：**同一份 UI 与命令层跑在两种后端上**。
+//! 设计目标：**同一份 UI 与命令层跑在三种后端上**。
 //! - macOS / Apple 芯片 → Apple Virtualization.framework（原生视图、GPU 加速、virtiofs）
-//! - 其它平台 → QEMU 子进程（HVF / WHPX / KVM 加速）
+//! - Windows → QEMU+WHPX（默认，有画面）；用户在设置里选 HCS 时才用 HCS
+//! - 其它平台 → QEMU 子进程（HVF / KVM 加速）
 //!
 //! 引擎之间只共享 `VmSpec` 与 `VmState`，不共享实现细节。
 
 use crate::model::{EngineCaps, EngineInfo, SnapshotSupport, VmSpec, VmState};
 use serde::Serialize;
 
+#[cfg(target_os = "windows")]
+pub mod hcs;
 pub mod qemu;
 #[cfg(target_os = "macos")]
 pub mod vz;
@@ -158,6 +161,15 @@ impl Engine for NoopEngine {
 }
 
 /// 选定并构造宿主可用的引擎。只构造一次，进程内复用。
+///
+/// 选择顺序：
+/// 1. macOS → VZ；失败回落 QEMU。
+/// 2. Windows 且用户在设置里选了 `hcs` → HCS；不可用则回落 QEMU 并说明原因。
+/// 3. 其余 → QEMU。
+///
+/// **HCS 为什么不是默认**：它性能更好（CPU 由 Hyper-V 直接执行），但没有
+/// framebuffer 接口，`attach_view` 永远做不到，用户建好机器也看不见桌面。
+/// 这种取舍必须由用户显式选择（设置里的「引擎」项），不能替他决定。
 pub fn build_engine() -> Box<dyn Engine> {
     #[cfg(target_os = "macos")]
     {
@@ -169,7 +181,24 @@ pub fn build_engine() -> Box<dyn Engine> {
             }
         }
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        let settings = crate::settings::load();
+        if settings.engine_preference == crate::settings::EnginePreference::Hcs {
+            let candidate = hcs::HcsEngine::create();
+            let reason = {
+                let info = candidate.info();
+                if info.available {
+                    return Box::new(candidate);
+                }
+                info.reason
+            };
+            eprintln!("[vm] 已选 HCS 但不可用: {}，回落到 QEMU", reason);
+            return Box::new(qemu::QemuEngine::create_or_noop(reason));
+        }
+        return Box::new(qemu::QemuEngine::create_or_noop(String::new()));
+    }
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     {
         Box::new(qemu::QemuEngine::create_or_noop(String::new()))
     }

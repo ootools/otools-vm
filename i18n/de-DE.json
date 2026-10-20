@@ -150,6 +150,11 @@
   "vm.create.driverIsoHint": "z. B. virtio-win; Windows-Setup erkennt virtio-Datenträger/NIC über „Treiber laden“.",
   "vm.settings.firmware": "Firmware & Treiber",
   "vm.engine.softwareAccel": "Läuft unter QEMU-Softwareemulation (keine Hardwarebeschleunigung) — langsamer. Aktiviere unter Windows die „Windows Hypervisor Platform“ und starte neu für mehr Tempo.",
+  "vm.engine.prefTitle": "Engine",
+  "vm.engine.prefAuto": "Standard (QEMU)",
+  "vm.engine.prefAutoHint": "Mit Bild, beste Kompatibilität",
+  "vm.engine.prefHcs": "HCS (Windows-nativ)",
+  "vm.engine.prefSaved": "Engine-Einstellung gespeichert; Plugin neu starten, um sie anzuwenden",
   "vm.share.protocol9p": "9p · unter Linux sofort nutzbar",
   "vm.share.protocolVirtiofs": "virtio-fs · erfordert Linux-Host",
   "vm.share.virtiofsUnsupported": "virtio-fs erfordert einen Linux-Host mit virtiofsd, der auf diesem Host nicht verfügbar ist. Verwenden Sie 9p.",
@@ -197,5 +202,15 @@
   "vm.share.protocolSmb": "SMB (native Host-Freigabe)",
   "vm.share.smbName": "Freigabename",
   "vm.share.smbHint": "Wird vom Host-Dateidienst bereitgestellt; Windows-Gäste brauchen keinen Treiber.",
-  "vm.console.mountHintSmb": "Im Gast: net use Z: \\\\{host}\\{name} (oder den Pfad im Explorer öffnen)"
+  "vm.console.mountHintSmb": "Im Gast: net use Z: \\\\{host}\\{name} (oder den Pfad im Explorer öffnen)",
+  "vm.console.noDisplayTitle": "Dieses Backend liefert kein Bild",
+  "vm.console.noDisplayHint": "Die HCS-Engine hat keine Bildausgabe-API. Die VM läuft im Hintergrund weiter, aber ihr Desktop ist nicht sichtbar. Für ein Bild bitte das QEMU-Backend verwenden.",
+  "vm.console.noDisplayFoot": "HCS hat keine Bild-API: Die VM läuft weiter und lässt sich stoppen oder pausieren",
+  "vm.hcs.title": "HCS-Engine",
+  "vm.hcs.available": "Verfügbar",
+  "vm.hcs.needsElevation": "Administrator erforderlich",
+  "vm.hcs.notSupported": "Nur unter Windows",
+  "vm.hcs.reasonElevation": "OTools als Administrator ausführen, um HCS zu nutzen; sonst wird QEMU verwendet",
+  "vm.hcs.reasonComponent": "„Virtual Machine Platform“ in den Windows-Features aktivieren und neu starten",
+  "vm.hcs.diskVhdx": "HCS unterstützt nur VHDX-Datenträger; RAW wird beim Start automatisch konvertiert"
 }

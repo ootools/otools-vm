@@ -86,6 +86,11 @@ const scheduleSync = (): void => {
 };
 
 const attach = async (): Promise<void> => {
+  // 后端没有画面能力时不必去试：attach 一定失败，还会把错误文案盖掉
+  // 我们精心写的「为什么没有画面」。直接返回，让占位说明留在原位。
+  if (!vmStore.state.engine?.caps.displayOutput) {
+    return;
+  }
   const rect = computeRect();
   if (!rect) {
     return;
@@ -206,17 +211,36 @@ const mountCommand = computed(() => {
 });
 
 const showEngineFallback = computed(() => props.vm.engine === 'qemu');
+
+/**
+ * 当前引擎能不能输出画面。
+ *
+ * HCS 后端恒为 false（它没有 framebuffer 接口），此时不该显示「等待画面」的
+ * 加载态——那会让用户以为在连、其实永远不会有画面。改成直接说明原因。
+ */
+const engineHasDisplay = computed(() => vmStore.state.engine?.caps.displayOutput !== false);
+
+/** 后端本轮是否拿得到画面。明白写着「拿不到」时要给出可执行的替代方案。 */
+const displayUnavailable = computed(
+  () => Boolean(vmStore.state.engine) && !engineHasDisplay.value && props.vm.state !== 'stopped',
+);
 const showError = computed(() => Boolean(props.vm.lastError));
 
 /** 挂起态专用占位文案：机器还在，只是被冻结了。 */
 const suspended = computed(() => props.vm.state === 'paused');
-const placeholderTitle = computed(() =>
-  suspended.value ? t('vm.console.suspended') : t('vm.console.waiting'),
-);
-const placeholderHint = computed(() =>
-  suspended.value ? t('vm.console.suspendedHint') : t('vm.console.waitingHint'),
-);
-const placeholderIcon = computed(() => (suspended.value ? '⏸' : '⏻'));
+const placeholderTitle = computed(() => {
+  if (displayUnavailable.value) {
+    return t('vm.console.noDisplayTitle');
+  }
+  return suspended.value ? t('vm.console.suspended') : t('vm.console.waiting');
+});
+const placeholderHint = computed(() => {
+  if (displayUnavailable.value) {
+    return t('vm.console.noDisplayHint');
+  }
+  return suspended.value ? t('vm.console.suspendedHint') : t('vm.console.waitingHint');
+});
+const placeholderIcon = computed(() => (displayUnavailable.value ? '🖥' : suspended.value ? '⏸' : '⏻'));
 
 const copyMountCommand = async (): Promise<void> => {
   if (!mountCommand.value) {
@@ -243,6 +267,9 @@ const copyMountCommand = async (): Promise<void> => {
 
     <footer class="vm-console-foot">
       <p v-if="showEngineFallback" class="vm-console-note">{{ t('vm.console.engineFallback') }}</p>
+      <p v-else-if="displayUnavailable" class="vm-console-note">
+        {{ t('vm.console.noDisplayFoot') }}
+      </p>
       <p v-else-if="attachError" class="vm-console-note error">{{ attachError }}</p>
       <p v-else-if="showError" class="vm-console-note error">{{ vm.lastError }}</p>
       <p v-else-if="mountCommand" class="vm-console-note clickable" @click="copyMountCommand">

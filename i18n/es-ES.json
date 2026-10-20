@@ -150,6 +150,11 @@
   "vm.create.driverIsoHint": "p. ej. virtio-win; permite al instalador de Windows detectar disco/NIC virtio mediante «Cargar controlador».",
   "vm.settings.firmware": "Firmware y controladores",
   "vm.engine.softwareAccel": "Ejecutando bajo emulación por software de QEMU (sin aceleración por hardware) — más lento. En Windows, activa «Windows Hypervisor Platform» y reinicia para acelerar.",
+  "vm.engine.prefTitle": "Motor",
+  "vm.engine.prefAuto": "Predeterminado (QEMU)",
+  "vm.engine.prefAutoHint": "Con imagen y máxima compatibilidad",
+  "vm.engine.prefHcs": "HCS (nativo de Windows)",
+  "vm.engine.prefSaved": "Preferencia guardada; reinicia el plugin para aplicarla",
   "vm.share.protocol9p": "9p · funciona en Linux sin configuración",
   "vm.share.protocolVirtiofs": "virtio-fs · requiere host Linux",
   "vm.share.virtiofsUnsupported": "virtio-fs requiere un host Linux con virtiofsd, que este host no proporciona. Usa 9p.",
@@ -197,5 +202,15 @@
   "vm.share.protocolSmb": "SMB (recurso nativo del host)",
   "vm.share.smbName": "nombre del recurso",
   "vm.share.smbHint": "Lo sirve el servicio de archivos del host; los invitados Windows no necesitan controladores.",
-  "vm.console.mountHintSmb": "En el invitado: net use Z: \\\\{host}\\{name} (o abre la ruta en el Explorador)"
+  "vm.console.mountHintSmb": "En el invitado: net use Z: \\\\{host}\\{name} (o abre la ruta en el Explorador)",
+  "vm.console.noDisplayTitle": "Este backend no ofrece imagen",
+  "vm.console.noDisplayHint": "El motor HCS no tiene API de salida de imagen. La máquina sigue ejecutándose en segundo plano pero su escritorio no es visible. Usa el backend QEMU cuando necesites pantalla.",
+  "vm.console.noDisplayFoot": "HCS no tiene API de imagen: la máquina sigue en marcha y se puede detener o pausar",
+  "vm.hcs.title": "Motor HCS",
+  "vm.hcs.available": "Disponible",
+  "vm.hcs.needsElevation": "Requiere administrador",
+  "vm.hcs.notSupported": "Solo Windows",
+  "vm.hcs.reasonElevation": "Ejecuta OTools como administrador para usar HCS; de lo contrario se usa QEMU",
+  "vm.hcs.reasonComponent": "Activa «Plataforma de máquina virtual» en las características de Windows y reinicia",
+  "vm.hcs.diskVhdx": "HCS solo admite discos VHDX; los RAW se convierten automáticamente al iniciar"
 }

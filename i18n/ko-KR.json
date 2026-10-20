@@ -150,6 +150,11 @@
   "vm.create.driverIsoHint": "virtio-win 등. Windows 설치의 \"드라이버 로드\"로 virtio 디스크/NIC를 인식합니다.",
   "vm.settings.firmware": "펌웨어 및 드라이버",
   "vm.engine.softwareAccel": "QEMU 소프트웨어 에뮬레이션(하드웨어 가속 없음)으로 실행 중 — 느립니다. Windows 호스트에서는 \"Windows Hypervisor Platform\"을 활성화하고 재부팅하면 빨라집니다.",
+  "vm.engine.prefTitle": "엔진",
+  "vm.engine.prefAuto": "기본 (QEMU)",
+  "vm.engine.prefAutoHint": "화면 지원, 호환성 최고",
+  "vm.engine.prefHcs": "HCS (Windows 네이티브)",
+  "vm.engine.prefSaved": "엔진 설정이 저장되었습니다. 플러그인을 다시 시작하면 적용됩니다",
   "vm.share.protocol9p": "9p · Linux에서 바로 사용 가능",
   "vm.share.protocolVirtiofs": "virtio-fs · Linux 호스트 필요",
   "vm.share.virtiofsUnsupported": "virtio-fs에는 virtiofsd가 있는 Linux 호스트가 필요하며 현재 호스트에서는 사용할 수 없습니다. 9p를 사용하세요.",
@@ -197,5 +202,15 @@
   "vm.share.protocolSmb": "SMB(호스트 기본 공유)",
   "vm.share.smbName": "공유 이름",
   "vm.share.smbHint": "호스트 파일 서비스가 제공하며 Windows 게스트에 드라이버가 필요 없습니다.",
-  "vm.console.mountHintSmb": "게스트에서 실행: net use Z: \\\\{host}\\{name} (또는 탐색기에서 경로 열기)"
+  "vm.console.mountHintSmb": "게스트에서 실행: net use Z: \\\\{host}\\{name} (또는 탐색기에서 경로 열기)",
+  "vm.console.noDisplayTitle": "이 백엔드는 화면을 제공하지 않습니다",
+  "vm.console.noDisplayHint": "HCS 엔진에는 화면 출력 API가 없습니다. 가상 머신은 백그라운드에서 실행되지만 데스크톱은 보이지 않습니다. 화면이 필요하면 QEMU 백엔드로 실행하세요.",
+  "vm.console.noDisplayFoot": "HCS에는 화면 API가 없습니다. 머신은 계속 실행 중이며 중지나 일시정지가 가능합니다",
+  "vm.hcs.title": "HCS 엔진",
+  "vm.hcs.available": "사용 가능",
+  "vm.hcs.needsElevation": "관리자 권한 필요",
+  "vm.hcs.notSupported": "Windows 전용",
+  "vm.hcs.reasonElevation": "HCS를 사용하려면 OTools를 관리자 권한으로 실행하세요. 그렇지 않으면 QEMU를 사용합니다",
+  "vm.hcs.reasonComponent": "Windows 기능에서 \"가상 머신 플랫폼\"을 켜고 재부팅하세요",
+  "vm.hcs.diskVhdx": "HCS는 VHDX 디스크만 지원합니다. RAW는 시작할 때 자동 변환됩니다"
 }

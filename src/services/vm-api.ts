@@ -1,6 +1,8 @@
 import { invokeNative } from '@/sdk/runtime';
 import type {
   EngineInfo,
+  EnginePreference,
+  HcsStatus,
   HostInfo,
   HostInterface,
   NetworkBackendStatus,
@@ -13,6 +15,7 @@ import type {
   RosettaStatus,
   SnapshotSupport,
   ViewRect,
+  VmSettings,
 } from '@/types/vm';
 
 /** 命令层薄封装：一个命令一个方法，业务组件不直接拼字符串。 */
@@ -41,6 +44,17 @@ export const VmApi = {
    */
   getNetworkBackend: (id?: string) =>
     invokeNative<NetworkBackendStatus>('vm_network_backend', id ? { id } : {}),
+
+  /**
+   * HCS 引擎状态。非 Windows 平台返回 `supported: false`，调用方不必自己判断平台。
+   */
+  getHcsStatus: () => invokeNative<HcsStatus>('vm_hcs_status'),
+
+  getSettings: () => invokeNative<VmSettings>('vm_get_settings'),
+
+  /** 切换引擎偏好。**需要重启插件生效**（引擎是进程级单例）。 */
+  setEnginePreference: (preference: EnginePreference) =>
+    invokeNative<VmSettings>('vm_set_engine_preference', { preference }),
 
   start: (id: string) => invokeNative<{ ok: boolean }>('vm_start', { id }),
   stop: (id: string) => invokeNative<{ ok: boolean }>('vm_stop', { id }),

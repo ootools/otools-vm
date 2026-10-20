@@ -150,6 +150,11 @@
   "vm.create.driverIsoHint": "virtio-win など。Windows セットアップの「ドライバーの読み込み」で virtio ディスク/NIC を認識できます。",
   "vm.settings.firmware": "ファームウェアとドライバー",
   "vm.engine.softwareAccel": "QEMU ソフトウェアエミュレーション（ハードウェア加速なし）で動作中 — 低速です。Windows ホストでは「Windows Hypervisor Platform」を有効にして再起動すると高速化します。",
+  "vm.engine.prefTitle": "エンジン",
+  "vm.engine.prefAuto": "既定（QEMU）",
+  "vm.engine.prefAutoHint": "画面あり、互換性が最も高い",
+  "vm.engine.prefHcs": "HCS（Windows ネイティブ）",
+  "vm.engine.prefSaved": "エンジン設定を保存しました。プラグインを再起動すると反映されます",
   "vm.share.protocol9p": "9p · Linux でそのまま使える",
   "vm.share.protocolVirtiofs": "virtio-fs · Linux ホストが必要",
   "vm.share.virtiofsUnsupported": "virtio-fs には virtiofsd を持つ Linux ホストが必要です。このホストでは利用できないので 9p を使ってください。",
@@ -197,5 +202,15 @@
   "vm.share.protocolSmb": "SMB（ホスト標準共有）",
   "vm.share.smbName": "共有名",
   "vm.share.smbHint": "ホストのファイル共有サービスが提供します。Windows ゲストはドライバー不要です。",
-  "vm.console.mountHintSmb": "ゲストで実行: net use Z: \\\\{host}\\{name}（エクスプローラーで直接開くことも可）"
+  "vm.console.mountHintSmb": "ゲストで実行: net use Z: \\\\{host}\\{name}（エクスプローラーで直接開くことも可）",
+  "vm.console.noDisplayTitle": "このバックエンドは画面を提供しません",
+  "vm.console.noDisplayHint": "HCS エンジンには画面出力 API がありません。仮想マシンはバックグラウンドで動作しますが、デスクトップは表示されません。画面が必要な場合は QEMU バックエンドで起動してください。",
+  "vm.console.noDisplayFoot": "HCS に画面 API はありません。マシンは動作中で、停止や一時停止は可能です",
+  "vm.hcs.title": "HCS エンジン",
+  "vm.hcs.available": "利用可能",
+  "vm.hcs.needsElevation": "管理者権限が必要",
+  "vm.hcs.notSupported": "Windows のみ",
+  "vm.hcs.reasonElevation": "HCS を使うには OTools を管理者として実行してください。それ以外は QEMU を使用します",
+  "vm.hcs.reasonComponent": "Windows の機能で「仮想マシン プラットフォーム」を有効にして再起動してください",
+  "vm.hcs.diskVhdx": "HCS は VHDX ディスクのみ対応します。RAW は起動時に自動変換されます"
 }

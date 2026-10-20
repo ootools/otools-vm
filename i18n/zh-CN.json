@@ -150,6 +150,11 @@
   "vm.create.driverIsoHint": "virtio-win 等；Windows 安装时经「加载驱动」识别 virtio 磁盘/网卡。",
   "vm.settings.firmware": "固件与驱动",
   "vm.engine.softwareAccel": "当前为 QEMU 软件模拟（未启用硬件加速），性能较低。Windows 宿主建议开启「Windows Hypervisor Platform」后重启提速。",
+  "vm.engine.prefTitle": "引擎",
+  "vm.engine.prefAuto": "默认（QEMU）",
+  "vm.engine.prefAutoHint": "有画面，兼容性最好",
+  "vm.engine.prefHcs": "HCS（Windows 原生）",
+  "vm.engine.prefSaved": "引擎偏好已保存，重启插件后生效",
   "vm.share.protocol9p": "9p · Linux 开箱可用",
   "vm.share.protocolVirtiofs": "virtio-fs · 需 Linux 宿主",
   "vm.share.virtiofsUnsupported": "virtio-fs 需要 Linux 宿主与 virtiofsd，当前宿主不可用，请改用 9p。",
@@ -197,5 +202,15 @@
   "vm.share.protocolSmb": "SMB（宿主原生共享）",
   "vm.share.smbName": "共享名",
   "vm.share.smbHint": "由宿主自带文件服务提供，Windows 客户机无需驱动即可访问。",
-  "vm.console.mountHintSmb": "客户机里执行：net use Z: \\\\{host}\\{name}（或资源管理器直接打开该路径）"
+  "vm.console.mountHintSmb": "客户机里执行：net use Z: \\\\{host}\\{name}（或资源管理器直接打开该路径）",
+  "vm.console.noDisplayTitle": "当前后端不提供画面",
+  "vm.console.noDisplayHint": "HCS 引擎没有画面输出接口，虚拟机在后台正常运行但看不到桌面。需要画面请在 QEMU 后端下启动。",
+  "vm.console.noDisplayFoot": "HCS 后端无画面接口：机器仍在运行，可正常关机或暂停",
+  "vm.hcs.title": "HCS 引擎",
+  "vm.hcs.available": "可用",
+  "vm.hcs.needsElevation": "需要管理员权限",
+  "vm.hcs.notSupported": "仅 Windows 可用",
+  "vm.hcs.reasonElevation": "以管理员身份运行 OTools 后可用 HCS；否则自动使用 QEMU",
+  "vm.hcs.reasonComponent": "请在 Windows 功能中开启「虚拟机平台」后重启",
+  "vm.hcs.diskVhdx": "HCS 只能使用 VHDX 磁盘，RAW 盘会在启动时自动转换"
 }

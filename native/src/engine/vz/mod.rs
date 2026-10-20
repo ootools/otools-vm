@@ -435,6 +435,8 @@ impl Engine for VzEngine {
                 resize_disk: true,
                 rosetta: true,
                 bridged_network: false,
+                // VZ 用 VZVirtualMachineView 把画面搬进插件面板。
+                display_output: true,
             },
         }
     }
