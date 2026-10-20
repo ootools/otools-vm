@@ -4,8 +4,10 @@ import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
 import { VmApi } from '@/services/vm-api';
 import { vmStore } from '@/state/vm-store';
-import type { GuestOs, SharedDir, VmCreateInput } from '@/types/vm';
+import type { GuestOs, NetworkMode, PortForward, SharedDir, VmCreateInput } from '@/types/vm';
 import SharedDirEditor from './SharedDirEditor.vue';
+import VmDeviceManager, { type DeviceConfig } from './VmDeviceManager.vue';
+import VmNetworkManager, { type NetworkConfig } from './VmNetworkManager.vue';
 
 const visible = defineModel<boolean>({ required: true });
 
@@ -20,6 +22,14 @@ const form = reactive<{
   memoryMb: number;
   diskSizeGb: number;
   installerPath: string;
+  firmware: string;
+  firmwarePath: string;
+  driverIso: string;
+  network: NetworkMode;
+  networkIface: string;
+  bootOrder: string[];
+  usbMedia: string;
+  portForwards: PortForward[];
   sharedDirs: SharedDir[];
   clipboard: boolean;
   autoResize: boolean;
@@ -33,6 +43,14 @@ const form = reactive<{
   memoryMb: 4096,
   diskSizeGb: 40,
   installerPath: '',
+  firmware: 'bios',
+  firmwarePath: '',
+  driverIso: '',
+  network: 'nat',
+  networkIface: '',
+  bootOrder: ['disk', 'cdrom', 'net'],
+  usbMedia: '',
+  portForwards: [],
   sharedDirs: [],
   clipboard: true,
   autoResize: true,
@@ -70,6 +88,14 @@ const reset = (): void => {
   form.memoryMb = Math.min(4096, maxMemory.value);
   form.diskSizeGb = 40;
   form.installerPath = '';
+  form.firmware = 'bios';
+  form.firmwarePath = '';
+  form.driverIso = '';
+  form.network = 'nat';
+  form.networkIface = '';
+  form.bootOrder = ['disk', 'cdrom', 'net'];
+  form.usbMedia = '';
+  form.portForwards = [];
   form.sharedDirs = [];
   form.clipboard = true;
   form.autoResize = true;
@@ -95,6 +121,45 @@ const pickInstaller = async (): Promise<void> => {
   }
 };
 
+// 固件 / 驱动 ISO 只对 QEMU 后端有意义（VZ 走 Apple 自己的 EFI）。
+const isQemu = computed(() => vmStore.state.engine?.kind === 'qemu');
+
+const pickDriverIso = async (): Promise<void> => {
+  try {
+    const picked = await VmApi.pickFile(t('vm.create.driverIso'));
+    if (picked?.path) {
+      form.driverIso = picked.path;
+    }
+  } catch {
+    ElMessage.info(t('vm.action.manualPathPlaceholder'));
+  }
+};
+
+// 设备 / 网络各捆成一个对象模型，与设置面板共用同一批组件。
+const deviceConfig = computed<DeviceConfig>({
+  get: () => ({
+    bootOrder: form.bootOrder,
+    usbMedia: form.usbMedia,
+  }),
+  set: (value) => {
+    form.bootOrder = value.bootOrder;
+    form.usbMedia = value.usbMedia;
+  },
+});
+
+const networkConfig = computed<NetworkConfig>({
+  get: () => ({
+    network: form.network,
+    networkIface: form.networkIface,
+    portForwards: form.portForwards,
+  }),
+  set: (value) => {
+    form.network = value.network;
+    form.networkIface = value.networkIface;
+    form.portForwards = value.portForwards;
+  },
+});
+
 const submit = async (): Promise<void> => {
   if (!form.name.trim()) {
     ElMessage.warning(t('vm.error.nameRequired'));
@@ -109,6 +174,14 @@ const submit = async (): Promise<void> => {
     memoryMb: form.memoryMb,
     diskSizeGb: form.diskSizeGb,
     installerPath: form.installerPath || null,
+    firmware: form.firmware,
+    firmwarePath: form.firmwarePath || null,
+    driverIso: form.driverIso || null,
+    network: form.network,
+    networkIface: form.networkIface || null,
+    bootOrder: form.bootOrder,
+    usbMedia: form.usbMedia || null,
+    portForwards: form.portForwards,
     sharedDirs: form.sharedDirs,
     clipboard: form.clipboard,
     autoResize: form.autoResize,
@@ -177,11 +250,42 @@ const submit = async (): Promise<void> => {
         <p class="vm-form-hint">{{ t('vm.create.installerHint') }}</p>
       </el-form-item>
 
+      <el-form-item v-if="isQemu" :label="t('vm.create.firmware')">
+        <el-radio-group v-model="form.firmware">
+          <el-radio-button value="bios">{{ t('vm.create.firmwareBios') }}</el-radio-button>
+          <el-radio-button value="uefi">{{ t('vm.create.firmwareUefi') }}</el-radio-button>
+        </el-radio-group>
+        <p class="vm-form-hint">{{ t('vm.create.firmwareHint') }}</p>
+      </el-form-item>
+
+      <el-form-item v-if="isQemu && form.firmware === 'uefi'" :label="t('vm.create.firmwarePath')">
+        <el-input v-model="form.firmwarePath" :placeholder="t('vm.create.firmwarePathPlaceholder')" />
+      </el-form-item>
+
+      <el-form-item v-if="isQemu && form.os === 'windows'" :label="t('vm.create.driverIso')">
+        <div class="vm-form-file">
+          <el-input v-model="form.driverIso" :placeholder="t('vm.create.installerNone')" />
+          <el-button @click="pickDriverIso">{{ t('vm.action.pickInstaller') }}</el-button>
+          <el-button v-if="form.driverIso" text @click="form.driverIso = ''">
+            {{ t('vm.action.remove') }}
+          </el-button>
+        </div>
+        <p class="vm-form-hint">{{ t('vm.create.driverIsoHint') }}</p>
+      </el-form-item>
+
       <el-form-item v-if="rosettaSupported" :label="t('vm.rosetta.label')">
         <div class="vm-form-toggle">
           <el-switch v-model="form.rosetta" :disabled="!rosettaInstalled" />
           <span class="vm-form-hint">{{ rosettaHint }}</span>
         </div>
+      </el-form-item>
+
+      <el-form-item v-if="isQemu" :label="t('vm.net.title')">
+        <VmNetworkManager v-model="networkConfig" />
+      </el-form-item>
+
+      <el-form-item v-if="isQemu" :label="t('vm.device.title')">
+        <VmDeviceManager v-model="deviceConfig" />
       </el-form-item>
 
       <el-form-item :label="t('vm.create.sharedDirs')">

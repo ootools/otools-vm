@@ -2,6 +2,8 @@ import { invokeNative } from '@/sdk/runtime';
 import type {
   EngineInfo,
   HostInfo,
+  HostInterface,
+  NetworkBackendStatus,
   VmCreateInput,
   VmSummary,
   VmCloneInput,
@@ -27,6 +29,18 @@ export const VmApi = {
     invokeNative<VmSummary>('vm_resize_disk', input),
   getRosettaStatus: () =>
     invokeNative<{ status: RosettaStatus }>('vm_rosetta_status').then((result) => result.status),
+
+  /** 宿主网卡清单：桥接 / 仅主机模式下供用户选择具体网卡。 */
+  listNetworkInterfaces: () =>
+    invokeNative<HostInterface[]>('vm_network_interfaces'),
+  /**
+   * 网络模式与宿主原生共享的可用性探测。
+   *
+   * 传 id 时额外返回该虚拟机视角下宿主在客户机里的地址（NAT 下固定 10.0.2.2），
+   * 供 UI 直接拼出客户机侧访问路径。
+   */
+  getNetworkBackend: (id?: string) =>
+    invokeNative<NetworkBackendStatus>('vm_network_backend', id ? { id } : {}),
 
   start: (id: string) => invokeNative<{ ok: boolean }>('vm_start', { id }),
   stop: (id: string) => invokeNative<{ ok: boolean }>('vm_stop', { id }),

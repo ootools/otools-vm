@@ -105,6 +105,7 @@ fn cmd_create(payload: &Value) -> Result<Value, String> {
             SharedDir {
                 host_path: dir.host_path,
                 mount_tag: tag,
+                protocol: dir.protocol,
                 read_only: dir.read_only,
             }
         })
@@ -120,7 +121,21 @@ fn cmd_create(payload: &Value) -> Result<Value, String> {
         disk_path: disk_path.to_string_lossy().to_string(),
         disk_size_gb: input.disk_size_gb,
         installer_path: input.installer_path.filter(|path| !path.trim().is_empty()),
-        network: model::NetworkMode::Nat,
+        firmware: input
+            .firmware
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "bios".to_string()),
+        firmware_path: input.firmware_path.filter(|path| !path.trim().is_empty()),
+        driver_iso: input.driver_iso.filter(|path| !path.trim().is_empty()),
+        virtiofsd_path: input.virtiofsd_path.filter(|path| !path.trim().is_empty()),
+        network: input.network.unwrap_or_default(),
+        network_iface: input
+            .network_iface
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        boot_order: input.boot_order,
+        usb_media: input.usb_media.filter(|path| !path.trim().is_empty()),
+        port_forwards: input.port_forwards,
         shared_dirs,
         clipboard: input.clipboard.unwrap_or(true),
         auto_resize: input.auto_resize.unwrap_or(true),
@@ -165,10 +180,14 @@ fn cmd_update(payload: &Value) -> Result<Value, String> {
             SharedDir {
                 host_path: dir.host_path,
                 mount_tag: tag,
+                protocol: dir.protocol,
                 read_only: dir.read_only,
             }
         })
         .collect();
+    spec.boot_order = input.boot_order;
+    spec.usb_media = input.usb_media.filter(|path| !path.trim().is_empty());
+    spec.port_forwards = input.port_forwards;
     if let Some(value) = input.clipboard {
         spec.clipboard = value;
     }
@@ -183,6 +202,33 @@ fn cmd_update(payload: &Value) -> Result<Value, String> {
     }
     if let Some(value) = input.installer_path {
         spec.installer_path = if value.trim().is_empty() { None } else { Some(value) };
+    }
+    if let Some(value) = input.firmware {
+        let value = value.trim();
+        if !value.is_empty() {
+            spec.firmware = value.to_string();
+        }
+    }
+    if let Some(value) = input.firmware_path {
+        spec.firmware_path = if value.trim().is_empty() { None } else { Some(value) };
+    }
+    if let Some(value) = input.driver_iso {
+        spec.driver_iso = if value.trim().is_empty() { None } else { Some(value) };
+    }
+    if let Some(value) = input.virtiofsd_path {
+        spec.virtiofsd_path = if value.trim().is_empty() { None } else { Some(value) };
+    }
+    if let Some(value) = input.network {
+        spec.network = value;
+        // 从非 NAT 切回 NAT 时把网卡选择一并清掉：留着会让下一次切到桥接时
+        // 拿到一个早已失效的网卡名。
+        if value == model::NetworkMode::Nat {
+            spec.network_iface = None;
+        }
+    }
+    if let Some(value) = input.network_iface {
+        let trimmed = value.trim().to_string();
+        spec.network_iface = if trimmed.is_empty() { None } else { Some(trimmed) };
     }
     if let Some(value) = input.notes {
         spec.notes = value;
@@ -383,6 +429,50 @@ fn cmd_resize_disk(payload: &Value) -> Result<Value, String> {
     serde_json::to_value(summary_for(engine.as_ref(), &spec)).map_err(|error| error.to_string())
 }
 
+/// 宿主网卡清单：供前端在桥接 / 仅主机模式下选择具体网卡。
+///
+/// 只返回当前「已连接且有 IPv4」的网卡——没有地址的网卡桥接过去也是死路。
+fn cmd_network_interfaces() -> Result<Value, String> {
+    let interfaces = engine::qemu::network::list_interfaces();
+    serde_json::to_value(interfaces).map_err(|error| error.to_string())
+}
+
+/// 各网络模式在当前宿主上的可用性：能不能用、不能用时为什么、怎么解决。
+///
+/// 前端据此禁用不可选模式并直接展示 `reason`，而不是让用户点了才看到启动失败。
+fn cmd_network_backend(payload: &Value) -> Result<Value, String> {
+    let mut items = Vec::new();
+    for mode in [
+        model::NetworkMode::Nat,
+        model::NetworkMode::Bridged,
+        model::NetworkMode::HostOnly,
+    ] {
+        let probe = engine::qemu::network::check_backend(mode);
+        items.push(json!({
+            "mode": engine::qemu::network::mode_label(mode),
+            "available": probe.is_ok(),
+            "reason": probe.err().unwrap_or_default(),
+            "needsInterface": mode.needs_interface(),
+        }));
+    }
+    let smb_probe = engine::qemu::smb::check_capability();
+    let value = json!({
+        "modes": items,
+        "smb": {
+            "available": smb_probe.is_ok(),
+            "reason": smb_probe.err().unwrap_or_default(),
+        },
+        "hostAddress": payload
+            .get("id")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .and_then(|id| store::load_spec(id).ok())
+            .map(|spec| engine::qemu::smb::host_address_for_guest(&spec))
+            .unwrap_or_default(),
+    });
+    Ok(value)
+}
+
 /// Rosetta 在宿主上的可用状态：`installed` / `notInstalled` / `notSupported`。
 fn cmd_rosetta_status() -> Result<Value, String> {
     #[cfg(target_os = "macos")]
@@ -527,6 +617,8 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
         "vm_detach_view" => cmd_detach_view(&payload),
         "vm_clone" => cmd_clone(&payload),
         "vm_resize_disk" => cmd_resize_disk(&payload),
+        "vm_network_interfaces" => cmd_network_interfaces(),
+        "vm_network_backend" => cmd_network_backend(&payload),
         "vm_rosetta_status" => cmd_rosetta_status(),
         "vm_pick_folder" => cmd_pick_folder(&payload),
         "vm_pick_file" => cmd_pick_file(&payload),
@@ -675,5 +767,113 @@ mod tests {
         assert!(tag
             .chars()
             .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-'));
+    }
+
+    #[test]
+    fn smb_share_name_rejects_windows_reserved_chars() {
+        // Windows 不允许共享名含 \ / : * ? " < > |，这些必须一律拒绝。
+        assert!(!SharedDir::is_valid_smb_share_name("bad/name"));
+        assert!(!SharedDir::is_valid_smb_share_name("bad\\name"));
+        assert!(!SharedDir::is_valid_smb_share_name("bad:name"));
+        assert!(!SharedDir::is_valid_smb_share_name("bad*name"));
+        assert!(!SharedDir::is_valid_smb_share_name("bad?name"));
+        assert!(!SharedDir::is_valid_smb_share_name("bad\"name"));
+        assert!(!SharedDir::is_valid_smb_share_name("bad<name>"));
+        assert!(!SharedDir::is_valid_smb_share_name("bad|name"));
+        assert!(!SharedDir::is_valid_smb_share_name(""));
+        // 允许的字符集：字母数字与 - _ .
+        assert!(SharedDir::is_valid_smb_share_name("share-1"));
+        assert!(SharedDir::is_valid_smb_share_name("My.Share_2"));
+        // 长度上限 80。
+        assert!(!SharedDir::is_valid_smb_share_name(&"a".repeat(81)));
+        assert!(SharedDir::is_valid_smb_share_name(&"a".repeat(80)));
+    }
+
+    /// 造一台最小的合法虚拟机，供校验相关测试改字段用。
+    fn base_spec() -> VmSpec {
+        VmSpec {
+            id: "vm-test".to_string(),
+            name: "test".to_string(),
+            os: GuestOs::Linux,
+            arch: "x86_64".to_string(),
+            cpus: 2,
+            memory_mb: 2048,
+            disk_path: "/tmp/disk.raw".to_string(),
+            disk_size_gb: 20,
+            installer_path: None,
+            firmware: "bios".to_string(),
+            firmware_path: None,
+            driver_iso: None,
+            virtiofsd_path: None,
+            network: model::NetworkMode::Nat,
+            network_iface: None,
+            boot_order: Vec::new(),
+            usb_media: None,
+            port_forwards: Vec::new(),
+            shared_dirs: Vec::new(),
+            clipboard: true,
+            auto_resize: true,
+            audio: true,
+            rosetta: false,
+            display_width: 1280,
+            display_height: 800,
+            notes: String::new(),
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn bridged_network_requires_interface() {
+        let mut spec = base_spec();
+        spec.network = model::NetworkMode::Bridged;
+        // 桥接没给网卡：必须报错，否则 QEMU 会拿到一个空 ifname。
+        assert!(spec.validate().is_err());
+        spec.network_iface = Some("  ".to_string());
+        // 只有空白也算没给。
+        assert!(spec.validate().is_err());
+        spec.network_iface = Some("en0".to_string());
+        assert!(spec.validate().is_ok());
+    }
+
+    #[test]
+    fn port_forward_only_allowed_on_nat() {
+        let mut spec = base_spec();
+        spec.port_forwards.push(model::PortForward {
+            protocol: "tcp".to_string(),
+            host_port: 3389,
+            guest_port: 3389,
+            bind_host: "127.0.0.1".to_string(),
+        });
+        // NAT 下合法。
+        assert!(spec.validate().is_ok());
+        // 桥接 / 仅主机下 hostfwd 不被 QEMU 接受，必须提前拦下。
+        spec.network = model::NetworkMode::Bridged;
+        spec.network_iface = Some("en0".to_string());
+        assert!(spec.validate().is_err());
+        spec.network = model::NetworkMode::HostOnly;
+        assert!(spec.validate().is_err());
+    }
+
+    #[test]
+    fn smb_protocol_is_accepted_and_name_checked() {
+        let mut spec = base_spec();
+        let dir = tempfile_dir();
+        spec.shared_dirs.push(SharedDir {
+            host_path: dir.clone(),
+            mount_tag: "bad/name".to_string(),
+            protocol: "smb".to_string(),
+            read_only: false,
+        });
+        // 非法 SMB 共享名要被拦下（斜杠在 Windows 上是保留字符）。
+        assert!(spec.validate().is_err());
+        spec.shared_dirs[0].mount_tag = "vm-share".to_string();
+        assert!(spec.validate().is_ok());
+    }
+
+    /// 造一个真实存在的临时目录（校验里会检查 host_path 是否为目录）。
+    fn tempfile_dir() -> String {
+        let dir = std::env::temp_dir().join("otools-vm-test-share");
+        let _ = std::fs::create_dir_all(&dir);
+        dir.to_string_lossy().replace('\\', "/")
     }
 }

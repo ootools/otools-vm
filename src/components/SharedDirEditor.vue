@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { Plus, FolderOpened, Close } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
 import { VmApi } from '@/services/vm-api';
+import { vmStore } from '@/state/vm-store';
 import type { SharedDir } from '@/types/vm';
 
 const props = defineProps<{ modelValue: SharedDir[]; disabled?: boolean }>();
@@ -11,6 +12,32 @@ const emit = defineEmits<{ (event: 'update:modelValue', value: SharedDir[]): voi
 
 const manualMode = ref(false);
 const manualPath = ref('');
+
+/** virtio-fs 只有 Linux 宿主能跑（virtiofsd 与 memfd 都只在 Linux 有）。 */
+const virtiofsSupported = computed(() => vmStore.state.host?.os === 'linux');
+
+/** 共享协议全集，与 native 侧 SHARED_PROTOCOLS 保持一致。 */
+const PROTOCOLS = ['9p', 'virtiofs', 'smb'] as const;
+
+const setProtocol = (index: number, value: string): void => {
+  if (!(PROTOCOLS as readonly string[]).includes(value)) {
+    return;
+  }
+  update(
+    props.modelValue.map((item, position) => {
+      if (position !== index) {
+        return item;
+      }
+      // 换协议时把挂载名收敛到该协议允许的字符集，免得改完协议才发现名字非法。
+      const mountTag = value === 'smb' ? toSmbName(item.mountTag) : item.mountTag;
+      return { ...item, protocol: value, mountTag };
+    }),
+  );
+};
+
+/** SMB 共享名只允许字母、数字、- _ .；其余字符替换成 -。 */
+const toSmbName = (value: string): string =>
+  value.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'share';
 
 /** 与 native 侧 `SharedDir::derive_tag` 保持同一套规则。 */
 const deriveTag = (hostPath: string, index: number): string => {
@@ -39,11 +66,15 @@ const pushPath = (hostPath: string): boolean => {
     ElMessage.info(trimmed);
     return true;
   }
+  const tag = deriveTag(trimmed, props.modelValue.length);
   update([
     ...props.modelValue,
     {
       hostPath: trimmed,
-      mountTag: deriveTag(trimmed, props.modelValue.length),
+      // SMB 共享名比 9p 标签严（不能带点以外的符号），统一按 SMB 收敛一次，
+      // 这样以后切换协议不用再改名字。
+      mountTag: toSmbName(tag),
+      protocol: '9p',
       readOnly: false,
     },
   ]);
@@ -103,19 +134,40 @@ const toggleReadOnly = (index: number, value: boolean): void => {
     </div>
 
     <div v-for="(dir, index) in modelValue" :key="dir.hostPath" class="vm-share-row">
-      <el-icon class="vm-share-icon"><FolderOpened /></el-icon>
-      <div class="vm-share-path" :title="dir.hostPath">
-        <span class="vm-share-name">{{ dir.hostPath }}</span>
-        <span class="vm-share-tag">virtiofs · {{ dir.mountTag }}</span>
+      <div class="vm-share-main">
+        <el-icon class="vm-share-icon"><FolderOpened /></el-icon>
+        <div class="vm-share-path" :title="dir.hostPath">
+          <span class="vm-share-name">{{ dir.hostPath }}</span>
+          <span class="vm-share-tag">{{ dir.mountTag }}</span>
+        </div>
+        <el-switch
+          :model-value="dir.readOnly"
+          size="small"
+          :disabled="disabled"
+          :active-text="t('vm.settings.readOnly')"
+          @update:model-value="(value: string | number | boolean) => toggleReadOnly(index, Boolean(value))"
+        />
+        <el-button :icon="Close" circle size="small" text :disabled="disabled" @click="removeAt(index)" />
       </div>
-      <el-switch
-        :model-value="dir.readOnly"
-        size="small"
-        :disabled="disabled"
-        :active-text="t('vm.settings.readOnly')"
-        @update:model-value="(value: string | number | boolean) => toggleReadOnly(index, Boolean(value))"
-      />
-      <el-button :icon="Close" circle size="small" text :disabled="disabled" @click="removeAt(index)" />
+      <div class="vm-share-sub">
+        <el-select
+          :model-value="dir.protocol"
+          size="small"
+          class="vm-share-protocol"
+          :disabled="disabled"
+          @update:model-value="(value: string | number | boolean) => setProtocol(index, String(value))"
+        >
+          <el-option value="9p" :label="t('vm.share.protocol9p')" />
+          <el-option value="virtiofs" :label="t('vm.share.protocolVirtiofs')" :disabled="!virtiofsSupported" />
+          <el-option value="smb" :label="t('vm.share.protocolSmb')" />
+        </el-select>
+        <span v-if="dir.protocol === 'virtiofs' && !virtiofsSupported" class="vm-share-warn">
+          {{ t('vm.share.virtiofsUnsupported') }}
+        </span>
+        <span v-else-if="dir.protocol === 'smb'" class="vm-share-hint">
+          {{ t('vm.share.smbHint') }}
+        </span>
+      </div>
     </div>
 
     <div v-if="manualMode" class="vm-share-manual">
@@ -161,11 +213,40 @@ const toggleReadOnly = (index: number, value: boolean): void => {
 
 .vm-share-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
   padding: 6px 8px;
   border-radius: 6px;
   border: 1px solid var(--el-border-color-lighter);
+}
+
+.vm-share-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vm-share-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 22px;
+}
+
+.vm-share-protocol {
+  width: 190px;
+}
+
+.vm-share-warn {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--el-color-warning);
+}
+
+.vm-share-hint {
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
 }
 
 .vm-share-icon {

@@ -11,9 +11,55 @@ export type VmState =
   | 'error'
   | 'unavailable';
 
+/** NAT 端口转发：把宿主端口映射进客户机。只在 nat 网络下有效。 */
+export interface PortForward {
+  protocol: string;
+  hostPort: number;
+  guestPort: number;
+  /** 宿主绑定地址，默认 127.0.0.1（只监听回环，不暴露到局域网）。 */
+  bindHost: string;
+}
+
+/** 网络模式：nat（用户态 NAT）/ bridged（桥接到局域网）/ hostOnly（仅宿主可达）。 */
+export type NetworkMode = 'nat' | 'bridged' | 'hostOnly';
+
+/** 宿主上一张可选的网卡。 */
+export interface HostInterface {
+  /** 传给 QEMU 的标识：Windows 是适配器名，其余是接口名。 */
+  id: string;
+  /** 展示用名称。 */
+  label: string;
+  /** 当前 IPv4 地址，空表示没拿到。 */
+  ipv4: string;
+  /** 是否像一张可桥接的物理网卡。 */
+  bridgeable: boolean;
+  /** 是否无线；桥接无线网卡有吞吐抖动，UI 提示优先选有线。 */
+  wireless: boolean;
+}
+
+/** 单个网络模式在当前宿主的可用性。 */
+export interface NetworkModeStatus {
+  mode: NetworkMode;
+  available: boolean;
+  /** 不可用时的可操作原因。 */
+  reason: string;
+  /** 该模式是否需要指定网卡。 */
+  needsInterface: boolean;
+}
+
+/** 网络后端与宿主原生共享的探测结果。 */
+export interface NetworkBackendStatus {
+  modes: NetworkModeStatus[];
+  smb: { available: boolean; reason: string };
+  /** 指定虚拟机视角下宿主在客户机里的地址（NAT 下固定 10.0.2.2）。 */
+  hostAddress: string;
+}
+
 export interface SharedDir {
   hostPath: string;
   mountTag: string;
+  /** 共享协议：9p（默认）/ virtiofs / smb。 */
+  protocol: string;
   readOnly: boolean;
 }
 
@@ -27,7 +73,23 @@ export interface VmSpec {
   diskPath: string;
   diskSizeGb: number;
   installerPath: string | null;
-  network: 'nat' | 'bridged';
+  /** 固件类型：bios（默认，SeaBIOS）或 uefi（OVMF）。 */
+  firmware: string;
+  /** UEFI 固件文件路径；留空按平台常见位置自动探测。 */
+  firmwarePath: string | null;
+  /** VirtIO 驱动 ISO 路径（virtio-win 等），Windows 安装「加载驱动」用。 */
+  driverIso: string | null;
+  /** virtiofsd 可执行文件路径；留空按常见安装位置自动探测。仅 virtio-fs 协议需要。 */
+  virtiofsdPath: string | null;
+  network: NetworkMode;
+  /** 桥接 / 仅主机模式用的宿主网卡标识；NAT 下忽略。 */
+  networkIface: string | null;
+  /** 启动顺序：disk / cdrom / usb / net 的有序列表。 */
+  bootOrder: string[];
+  /** U 盘介质（RAW 磁盘镜像）路径。 */
+  usbMedia: string | null;
+  /** NAT 端口转发规则。 */
+  portForwards: PortForward[];
   sharedDirs: SharedDir[];
   clipboard: boolean;
   autoResize: boolean;
@@ -73,6 +135,8 @@ export interface EngineInfo {
   version: string;
   /** 宿主进程是否具备 macOS 虚拟化权限；false 说明宿主版本过旧。 */
   hostEntitled: boolean;
+  /** 当前实际生效的加速器（whpx/hvf/kvm/tcg）；未探测到为 null。 */
+  accelerator: string | null;
   caps: EngineCaps;
 }
 
@@ -109,7 +173,16 @@ export interface VmCreateInput {
   cpus: number;
   memoryMb: number;
   diskSizeGb: number;
+  network?: NetworkMode;
+  networkIface?: string | null;
   installerPath?: string | null;
+  firmware?: string;
+  firmwarePath?: string | null;
+  driverIso?: string | null;
+  virtiofsdPath?: string | null;
+  bootOrder?: string[];
+  usbMedia?: string | null;
+  portForwards?: PortForward[];
   sharedDirs: SharedDir[];
   clipboard?: boolean;
   autoResize?: boolean;
@@ -124,12 +197,21 @@ export interface VmUpdateInput {
   name: string;
   cpus: number;
   memoryMb: number;
+  network?: NetworkMode;
+  networkIface?: string | null;
   sharedDirs: SharedDir[];
   clipboard?: boolean;
   autoResize?: boolean;
   audio?: boolean;
   rosetta?: boolean;
   installerPath?: string | null;
+  firmware?: string;
+  firmwarePath?: string | null;
+  driverIso?: string | null;
+  virtiofsdPath?: string | null;
+  bootOrder?: string[];
+  usbMedia?: string | null;
+  portForwards?: PortForward[];
   notes?: string;
 }
 

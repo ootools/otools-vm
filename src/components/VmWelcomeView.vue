@@ -9,6 +9,10 @@ const emit = defineEmits<{ (event: 'create'): void }>();
 const engine = computed(() => vmStore.state.engine);
 const host = computed(() => vmStore.state.host);
 
+const softwareAccel = computed(
+  () => engine.value?.kind === 'qemu' && engine.value?.accelerator === 'tcg',
+);
+
 const caps = computed(() => {
   const value = engine.value?.caps;
   if (!value) {
@@ -48,6 +52,7 @@ const caps = computed(() => {
             <span v-if="engine?.version">· {{ engine.version }}</span>
           </p>
           <p v-if="engine?.reason" class="vm-welcome-reason">{{ engine.reason }}</p>
+          <p v-if="softwareAccel" class="vm-welcome-reason">{{ t('vm.engine.softwareAccel') }}</p>
           <p v-if="host" class="vm-welcome-host">
             {{ host.os }} / {{ host.arch }} · {{ host.totalMemoryMb }} {{ t('vm.unit.mb') }}
           </p>

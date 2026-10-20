@@ -416,6 +416,7 @@ impl Engine for VzEngine {
             reason: String::new(),
             version: self.version.clone(),
             host_entitled: probe_host_entitlement(),
+            accelerator: None,
             caps: EngineCaps {
                 native_view: true,
                 shared_dirs: true,

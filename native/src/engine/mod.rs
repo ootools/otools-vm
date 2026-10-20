@@ -120,6 +120,7 @@ impl Engine for NoopEngine {
             reason: self.reason.clone(),
             version: String::new(),
             host_entitled: false,
+            accelerator: None,
             caps: EngineCaps::unsupported(),
         }
     }

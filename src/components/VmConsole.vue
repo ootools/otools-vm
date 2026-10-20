@@ -192,6 +192,16 @@ const mountCommand = computed(() => {
   if (!first) {
     return '';
   }
+  if (first.protocol === 'virtiofs') {
+    return t('vm.console.mountHintVirtiofs', { tag: first.mountTag });
+  }
+  if (first.protocol === 'smb') {
+    // SMB 走宿主自带的文件服务：NAT 下宿主在客户机里固定是 10.0.2.2，
+    // 桥接 / 仅主机下是所选网卡的地址。
+    const host =
+      props.vm.network === 'nat' ? '10.0.2.2' : props.vm.networkIface || '<宿主地址>';
+    return t('vm.console.mountHintSmb', { name: first.mountTag, host });
+  }
   return t('vm.console.mountHint', { tag: first.mountTag });
 });
 
