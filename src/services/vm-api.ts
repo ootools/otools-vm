@@ -1,11 +1,14 @@
 import { invokeNative } from '@/sdk/runtime';
 import type {
+  DiskSpace,
   EngineInfo,
   EnginePreference,
   HcsStatus,
   HostInfo,
   HostInterface,
   NetworkBackendStatus,
+  QemuInstallStatus,
+  QemuPlan,
   VmCreateInput,
   VmSummary,
   VmCloneInput,
@@ -55,6 +58,27 @@ export const VmApi = {
   /** 切换引擎偏好。**需要重启插件生效**（引擎是进程级单例）。 */
   setEnginePreference: (preference: EnginePreference) =>
     invokeNative<VmSettings>('vm_set_engine_preference', { preference }),
+
+  /**
+   * 重新探测引擎。装完 QEMU 后调用，不必重启宿主。
+   *
+   * 有虚拟机在跑时会被拒绝（换引擎会让运行中的进程变成没人管的孤儿）。
+   */
+  reprobeEngine: () => invokeNative<EngineInfo>('vm_engine_reprobe'),
+
+  /** QEMU 一键获取方案：走哪条路、需要用户做什么。 */
+  getQemuPlan: () => invokeNative<QemuPlan>('vm_qemu_plan'),
+  /** 发起获取。**立即返回**，进度看 `qemuInstallStatus`。 */
+  installQemu: () => invokeNative<QemuInstallStatus>('vm_qemu_install'),
+  qemuInstallStatus: () => invokeNative<QemuInstallStatus>('vm_qemu_install_status'),
+
+  /**
+   * 目录所在卷的可用空间。不传路径时问默认数据目录。
+   *
+   * 用于在创建对话框里先提示「这块盘还剩多少」，而不是等建盘时才报错。
+   */
+  getDiskSpace: (path?: string) =>
+    invokeNative<DiskSpace>('vm_disk_space', path ? { path } : {}),
 
   start: (id: string) => invokeNative<{ ok: boolean }>('vm_start', { id }),
   stop: (id: string) => invokeNative<{ ok: boolean }>('vm_stop', { id }),

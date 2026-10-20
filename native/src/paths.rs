@@ -91,3 +91,95 @@ pub fn sanitize_id(id: &str) -> String {
 pub fn ensure_dir(path: &std::path::Path) -> Result<(), String> {
     std::fs::create_dir_all(path).map_err(|error| format!("创建目录失败 {}: {}", path.display(), error))
 }
+
+/// 解析系统盘的最终落盘路径。
+///
+/// `custom` 为空时沿用默认目录（与元数据同处）；非空时把盘放到该目录下，
+/// 并带上虚拟机 id 作为文件名——多个虚拟机共用一个存储目录时不会互相覆盖。
+///
+/// **只有磁盘会搬**：`vm.json`、NVRAM、日志这些必须留在默认目录，因为
+/// `list_specs` 是靠扫默认目录发现虚拟机的，元数据搬走机器就从列表里消失了。
+pub fn resolve_disk_path(id: &str, custom: Option<&str>) -> Result<PathBuf, String> {
+    let Some(raw) = custom.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(vm_disk_path(id));
+    };
+    let dir = PathBuf::from(raw);
+    if !dir.is_absolute() {
+        return Err(format!("存储目录必须是绝对路径：{}", raw));
+    }
+    // 文件名带 id：同一个目录放多台机器时不会撞名。
+    Ok(dir.join(format!("{}.raw", sanitize_id(id))))
+}
+
+/// 磁盘所在卷的可用空间（字节）。
+///
+/// 用于在建盘前拦一下「明明装不下还硬建」。取不到时返回 `None`，调用方应当
+/// 放行而不是误报——查询失败不该等于「没有空间」。
+pub fn available_bytes(path: &std::path::Path) -> Option<u64> {
+    // `fs2` 之类会引进新依赖；这里直接问系统：
+    // Windows 用 `GetDiskFreeSpaceExW`，类 Unix 用 `statvfs`。
+    #[cfg(target_os = "windows")]
+    {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn GetDiskFreeSpaceExW(
+                directory: *const u16,
+                free_for_caller: *mut u64,
+                total: *mut u64,
+                total_free: *mut u64,
+            ) -> i32;
+        }
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+
+        // 目标目录可能还不存在，先退到最近的已存在祖先。
+        let mut probe = path.to_path_buf();
+        while !probe.exists() {
+            match probe.parent() {
+                Some(parent) if parent != probe => probe = parent.to_path_buf(),
+                _ => return None,
+            }
+        }
+        let wide: Vec<u16> = OsStr::new(&probe)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut free_for_caller: u64 = 0;
+        let ok = unsafe {
+            GetDiskFreeSpaceExW(
+                wide.as_ptr(),
+                &mut free_for_caller,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            None
+        } else {
+            Some(free_for_caller)
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // 类 Unix 用 `df -k` 避免引入 libc 绑定差异；输出第二列是可用 KB。
+        let probe = if path.exists() {
+            path.to_path_buf()
+        } else {
+            path.ancestors()
+                .find(|candidate| candidate.exists())
+                .map(|candidate| candidate.to_path_buf())?
+        };
+        let output = std::process::Command::new("df")
+            .arg("-k")
+            .arg(&probe)
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let line = text.lines().nth(1)?;
+        let available_kb: u64 = line.split_whitespace().nth(3)?.parse().ok()?;
+        Some(available_kb.saturating_mul(1024))
+    }
+}

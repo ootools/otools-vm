@@ -14,7 +14,7 @@ pub mod paths;
 pub mod settings;
 pub mod store;
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use serde_json::{json, Value};
 
@@ -24,10 +24,59 @@ use model::{
     VmSpec, VmSummary, VmUpdateInput, VmWorkspace,
 };
 
-static ENGINE: OnceLock<Arc<dyn Engine>> = OnceLock::new();
+/// 当前引擎。可替换：用户装完 QEMU 后点「重新检测」需要能换掉。
+///
+/// 不能用 `OnceLock`：它一旦初始化就再也改不了，等于「装了 QEMU 也必须重启
+/// 宿主」——正是我们要消除的体验断点。换成 RwLock 后重新探测只是换一个 Box。
+static ENGINE: std::sync::RwLock<Option<Arc<dyn Engine>>> = std::sync::RwLock::new(None);
 
-fn engine() -> &'static Arc<dyn Engine> {
-    ENGINE.get_or_init(|| Arc::from(engine::build_engine()))
+fn engine() -> Arc<dyn Engine> {
+    if let Ok(guard) = ENGINE.read() {
+        if let Some(current) = guard.as_ref() {
+            return Arc::clone(current);
+        }
+    }
+    let fresh: Arc<dyn Engine> = Arc::from(engine::build_engine());
+    if let Ok(mut guard) = ENGINE.write() {
+        // 双重检查：并发进来时以先写入的为准，避免各自建一份引擎互相覆盖
+        // （QEMU 引擎持子进程表，两份会互相看不见对方的虚拟机）。
+        if let Some(existing) = guard.as_ref() {
+            return Arc::clone(existing);
+        }
+        *guard = Some(Arc::clone(&fresh));
+    }
+    fresh
+}
+
+/// 丢弃现有引擎并重新探测。用于「装好 QEMU 后重新检测」。
+///
+/// **只在没有虚拟机在跑时调用**：换引擎等于丢掉旧引擎的子进程表，
+/// 旧 QEMU 进程会变成孤儿继续占内存，而界面上再也管不到它们。
+fn rebuild_engine() -> Arc<dyn Engine> {
+    let replacement: Arc<dyn Engine> = Arc::from(engine::build_engine());
+    if let Ok(mut guard) = ENGINE.write() {
+        *guard = Some(Arc::clone(&replacement));
+    }
+    replacement
+}
+
+/// 装完 QEMU 后在后台静默重探。
+///
+/// 与 [`cmd_engine_reprobe`] 的区别：这个不报错。它由安装线程在成功那一刻调用，
+/// 此时若有虚拟机在跑（理论上不太可能，用户刚点了安装），重建引擎会让那些
+/// 机器变成孤儿——所以宁可**跳过重建**，等用户自己重启，也不要冒险。
+pub(crate) fn reprobe_engine_silently() {
+    let busy = store::list_specs().into_iter().any(|spec| {
+        let current = engine();
+        let state = current.state(&spec);
+        state != model::VmState::Stopped
+            && state != model::VmState::Error
+            && state != model::VmState::Unavailable
+    });
+    if busy {
+        return;
+    }
+    let _ = rebuild_engine();
 }
 
 // ---------------------------------------------------------------- 命令实现
@@ -69,6 +118,31 @@ fn cmd_engine_info() -> Result<Value, String> {
     serde_json::to_value(engine().info()).map_err(|error| error.to_string())
 }
 
+/// 重新探测引擎，用于「刚装好 QEMU」的场景。
+///
+/// 有虚拟机在跑时拒绝重建：换引擎会丢掉旧引擎的子进程表，正在运行的 QEMU
+/// 会变成没人管的孤儿进程——既不显示在界面上，也停不掉。
+fn cmd_engine_reprobe() -> Result<Value, String> {
+    let running: Vec<String> = store::list_specs()
+        .into_iter()
+        .filter(|spec| {
+            let state = engine().state(spec);
+            state != model::VmState::Stopped
+                && state != model::VmState::Error
+                && state != model::VmState::Unavailable
+        })
+        .map(|spec| spec.name)
+        .collect();
+    if !running.is_empty() {
+        return Err(format!(
+            "请先关闭所有虚拟机再重新检测（正在运行：{}）",
+            running.join("、")
+        ));
+    }
+    let engine = rebuild_engine();
+    serde_json::to_value(engine.info()).map_err(|error| error.to_string())
+}
+
 fn cmd_host_info() -> Result<Value, String> {
     serde_json::to_value(host_info()).map_err(|error| error.to_string())
 }
@@ -90,7 +164,23 @@ fn cmd_create(payload: &Value) -> Result<Value, String> {
         input.arch.clone()
     };
 
-    let disk_path = paths::vm_disk_path(&id);
+    let disk_path = paths::resolve_disk_path(&id, input.storage_dir.as_deref())?;
+
+    // 建盘前先确认放得下。几 GB 的稀疏文件在写满前不会真占空间，但用户
+    // 一旦往里装系统就会立刻要这么多——先拦下来比装到一半失败好。
+    let needed = input.disk_size_gb.saturating_mul(1024 * 1024 * 1024);
+    if let Some(available) = paths::available_bytes(&disk_path) {
+        // 留 1 GB 余量给元数据与文件系统开销。
+        let reserve = 1024 * 1024 * 1024;
+        if available < needed.saturating_add(reserve) {
+            return Err(format!(
+                "存储目录空间不足：需要约 {} GB 可用，当前只剩 {} GB。请换一个目录或减小磁盘容量。",
+                needed / (1024 * 1024 * 1024) + 1,
+                available / (1024 * 1024 * 1024)
+            ));
+        }
+    }
+
     store::create_sparse_disk(&disk_path, input.disk_size_gb)?;
 
     let shared_dirs: Vec<SharedDir> = input
@@ -246,6 +336,9 @@ fn cmd_delete(payload: &Value) -> Result<Value, String> {
     if let Ok(spec) = store::load_spec(&id) {
         let _ = engine.stop(&spec);
         let _ = engine.detach_view(&spec);
+        // 磁盘可能在用户选的自定义目录里，`remove_vm_dir` 只清默认目录。
+        // 不单独删就会留下几十 GB 的孤儿文件，而界面上已经看不到这台机器了。
+        store::remove_detached_disk(&spec);
     }
     store::remove_vm_dir(&id)?;
     Ok(json!({ "ok": true }))
@@ -574,10 +667,61 @@ fn detach_all_views() {
 }
 
 fn cmd_shutdown() -> Result<Value, String> {
-    if let Some(engine) = ENGINE.get() {
-        engine.shutdown();
+    if let Ok(guard) = ENGINE.read() {
+        if let Some(engine) = guard.as_ref() {
+            engine.shutdown();
+        }
     }
     Ok(json!({ "ok": true }))
+}
+
+/// QEMU 的一键获取建议：走哪条路、需要用户做什么、失败时给什么命令。
+///
+/// 单独一个命令而不是塞进 `vm_engine_info`：引擎信息是「现在能不能用」，
+/// 这里是「不能用时怎么办」，前端展示位置与刷新时机都不同。
+fn cmd_qemu_plan() -> Result<Value, String> {
+    let plan = engine::qemu::install::plan();
+    Ok(json!({
+        "automatic": plan.automatic,
+        "strategy": plan.strategy,
+        "note": plan.note,
+        "command": plan.command,
+        "reason": plan.reason,
+        "supportedPlatform": engine::qemu::install::is_supported_platform(),
+        "binaryPath": engine::qemu::install::binary_path().to_string_lossy().to_string(),
+    }))
+}
+
+/// 发起 QEMU 获取。**立即返回**，进度看 `vm_qemu_install_status`。
+fn cmd_qemu_install() -> Result<Value, String> {
+    engine::qemu::install::start_install()?;
+    serde_json::to_value(engine::qemu::install::status()).map_err(|error| error.to_string())
+}
+
+fn cmd_qemu_install_status() -> Result<Value, String> {
+    serde_json::to_value(engine::qemu::install::status()).map_err(|error| error.to_string())
+}
+
+/// 某个目录所在卷的可用空间，供创建对话框实时提示。
+///
+/// 传空路径时返回默认数据目录的数值。取不到就给 `null`，前端据此隐藏提示
+/// 而不是误报「空间不足」。
+fn cmd_disk_space(payload: &Value) -> Result<Value, String> {
+    let raw = payload
+        .get("path")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let probe = if raw.is_empty() {
+        paths::vm_root_dir()
+    } else {
+        std::path::PathBuf::from(&raw)
+    };
+    Ok(json!({
+        "path": probe.to_string_lossy().to_string(),
+        "availableBytes": paths::available_bytes(&probe),
+    }))
 }
 
 // ---------------------------------------------------------------- 小工具
@@ -668,6 +812,11 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
         "ping" => Ok(json!({ "message": "pong", "engine": engine().info().kind })),
         "vm_get_workspace" => cmd_workspace(),
         "vm_engine_info" => cmd_engine_info(),
+        "vm_engine_reprobe" => cmd_engine_reprobe(),
+        "vm_qemu_plan" => cmd_qemu_plan(),
+        "vm_qemu_install" => cmd_qemu_install(),
+        "vm_qemu_install_status" => cmd_qemu_install_status(),
+        "vm_disk_space" => cmd_disk_space(&payload),
         "vm_host_info" => cmd_host_info(),
         "vm_create" => cmd_create(&payload),
         "vm_update" => cmd_update(&payload),

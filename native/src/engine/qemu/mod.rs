@@ -9,6 +9,7 @@
 //! 这条路径刻意保持「薄」：只做进程生命周期 + 参数拼装，不试图在插件里
 //! 重写一个 VMM。Apple 芯片上的主力体验始终是 VZ。
 
+pub mod install;
 pub mod network;
 pub mod smb;
 pub mod virtiofs;
@@ -229,14 +230,25 @@ impl QemuEngine {
 
     fn detect() -> Option<Self> {
         let arch = if cfg!(target_arch = "aarch64") { "aarch64" } else { "x86_64" };
-        let candidates = [
+
+        // **先找随插件分发的副本**，再找系统安装的。
+        //
+        // 顺序很关键：用户不该为了用虚拟机先自己装一个 QEMU。随插件带的
+        // 那份能直接用（不需要 PATH、不需要管理员），系统里装了别的版本也
+        // 不该抢在前面——版本不确定会让参数兼容性变成玄学。
+        let mut candidates: Vec<String> = Vec::new();
+        for bundled in bundled_candidates() {
+            candidates.push(bundled.to_string_lossy().to_string());
+        }
+        candidates.extend([
             format!("qemu-system-{}", arch),
             "/opt/homebrew/bin/qemu-system-aarch64".to_string(),
             "/usr/local/bin/qemu-system-aarch64".to_string(),
             "/opt/homebrew/bin/qemu-system-x86_64".to_string(),
             "/usr/local/bin/qemu-system-x86_64".to_string(),
             "qemu-system-x86_64".to_string(),
-        ];
+        ]);
+
         for candidate in candidates {
             if let Ok(output) = Command::new(&candidate).arg("--version").output() {
                 if output.status.success() {
@@ -543,6 +555,43 @@ impl QemuEngine {
     }
 }
 
+/// 随插件分发的 QEMU 副本应当在的位置。
+///
+/// 目录约定（都在插件自己的数据目录下，卸载插件即随之清掉）：
+/// - `~/.otools/local/vm/qemu/bin/`：用户在设置里「一键安装」下载到的位置；
+/// - `<插件目录>/runtime/qemu/bin/`：发布包若选择内嵌运行时，也认这里。
+///
+/// 两者都不存在时返回空，`detect` 自然回落到系统安装的 QEMU。
+fn bundled_candidates() -> Vec<PathBuf> {
+    let arch = if cfg!(target_arch = "aarch64") {
+        "aarch64"
+    } else {
+        "x86_64"
+    };
+    let binary = if cfg!(target_os = "windows") {
+        format!("qemu-system-{}.exe", arch)
+    } else {
+        format!("qemu-system-{}", arch)
+    };
+
+    let mut roots: Vec<PathBuf> = Vec::new();
+    // 用户级安装（一键安装落这里）。
+    roots.push(crate::paths::vm_root_dir().join("qemu").join("bin"));
+
+    // 插件自带运行时：DLL 所在目录的上一级再找 runtime/qemu/bin。
+    // Windows 上 DLL 在 <plugin>/lib/，macOS 在 <plugin>/lib/，结构一致。
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors().take(4) {
+            let candidate = ancestor.join("runtime").join("qemu").join("bin");
+            if candidate.is_dir() {
+                roots.push(candidate);
+            }
+        }
+    }
+
+    roots.into_iter().map(|root| root.join(&binary)).collect()
+}
+
 fn resolve_binary(candidate: &str) -> PathBuf {
     if candidate.contains('/') {
         return PathBuf::from(candidate);
@@ -569,7 +618,7 @@ impl Engine for QemuEngine {
                 kind: "qemu".to_string(),
                 available: false,
                 label: "QEMU".to_string(),
-                reason: "未找到 qemu-system-*。安装 QEMU 后重启宿主即可启用跨平台虚拟机。"
+                reason: "未找到 qemu-system-*。可以在设置里一键获取，装好后无需重启宿主。"
                     .to_string(),
                 version: String::new(),
                 // QEMU 走子进程，不需要 macOS 虚拟化权限。

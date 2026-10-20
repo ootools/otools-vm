@@ -587,6 +587,13 @@ pub struct VmCreateInput {
     pub cpus: u32,
     pub memory_mb: u64,
     pub disk_size_gb: u64,
+    /// 系统盘存放目录。留空则放默认位置（`~/.otools/local/vm/vms/<id>/`）。
+    ///
+    /// 支持自定义是刚需：一台虚拟机几十 GB，而用户目录常在小容量系统盘上。
+    /// 只有**磁盘**跟着搬——`vm.json` / NVRAM 这些元数据必须留在默认目录，
+    /// 因为虚拟机列表是靠扫那个目录发现的。
+    #[serde(default)]
+    pub storage_dir: Option<String>,
     #[serde(default)]
     pub network: Option<NetworkMode>,
     #[serde(default)]

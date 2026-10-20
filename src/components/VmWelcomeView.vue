@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { Plus } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
 import { VmApi } from '@/services/vm-api';
 import { vmStore } from '@/state/vm-store';
-import type { EnginePreference, HcsStatus, VmSettings } from '@/types/vm';
+import {
+  isQemuInstallBusy,
+  type EnginePreference,
+  type HcsStatus,
+  type QemuInstallStatus,
+  type QemuPlan,
+  type VmSettings,
+} from '@/types/vm';
 
 const emit = defineEmits<{ (event: 'create'): void }>();
 
@@ -34,9 +41,15 @@ const caps = computed(() => {
  *
  * 只在 HCS 出现（它没有 framebuffer 接口）。必须提前讲清楚，否则用户建好
  * 机器、点启动、看不到任何东西，会以为功能坏了。
+ *
+ * **必须排除「引擎根本没装好」的情况**：那时 caps 是全 false 的占位值，
+ * 照着渲染会变成「没装 QEMU」却提示「HCS 不提供画面」——完全误导。
  */
 const noDisplay = computed(
-  () => Boolean(engine.value) && engine.value?.caps.displayOutput === false,
+  () =>
+    Boolean(engine.value)
+    && engine.value?.available === true
+    && engine.value?.caps.displayOutput === false,
 );
 
 /**
@@ -73,7 +86,110 @@ onMounted(async () => {
   } catch {
     // 探测失败不影响主流程：没有 HCS 信息时就不显示引擎选项。
   }
+  await refreshQemuPlan();
+  // 上次安装没跑完（用户中途关了面板）时把进度接回来。
+  await pollInstallOnce();
 });
+
+// ------------------------------------------------------------ QEMU 一键获取
+
+/**
+ * 「本机没有 QEMU 时怎么办」。
+ *
+ * 以前这里只写一句「请安装 QEMU 后重启」，把找官网、选版本、配 PATH 全丢给
+ * 用户。现在改成一次点击：native 端会挑本机最可行的一条路（winget / 官方
+ * 安装器 / Homebrew），我们只负责展示与轮询进度。
+ */
+const qemuPlan = ref<QemuPlan | null>(null);
+const installStatus = ref<QemuInstallStatus | null>(null);
+const installing = ref(false);
+const reprobing = ref(false);
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+/** 只有 QEMU 后端缺失时才需要这块。VZ / HCS 都不依赖 QEMU。 */
+const needsQemu = computed(
+  () => !engine.value?.available && (engine.value?.kind === 'qemu' || engine.value?.kind === 'none'),
+);
+
+const installBusy = computed(() => installing.value || isQemuInstallBusy(installStatus.value));
+
+/** 进度百分比：native 端总量未知时会按名义大小估算，所以这里只做显示。 */
+const installPercent = computed(() => {
+  const progress = installStatus.value?.progress ?? 0;
+  return Math.max(0, Math.min(100, Math.round(progress * 100)));
+});
+
+const refreshQemuPlan = async (): Promise<void> => {
+  try {
+    qemuPlan.value = await VmApi.getQemuPlan();
+  } catch {
+    // 拿不到方案就不显示一键获取入口，避免点了才出错。
+  }
+};
+
+const pollInstallOnce = async (): Promise<void> => {
+  try {
+    installStatus.value = await VmApi.qemuInstallStatus();
+    if (installStatus.value.phase === 'done') {
+      stopPolling();
+      installing.value = false;
+      ElMessage.success(t('vm.qemu.done'));
+      // 装完立刻重新探测，用户不用重启宿主。
+      await reprobe();
+      return;
+    }
+    if (installStatus.value.phase === 'failed') {
+      stopPolling();
+      installing.value = false;
+    }
+  } catch {
+    // 轮询失败不打断：下一轮再试，用户随时可以手动重试。
+  }
+};
+
+const startPolling = (): void => {
+  if (pollTimer !== null) {
+    return;
+  }
+  pollTimer = setInterval(() => {
+    void pollInstallOnce();
+  }, 700);
+};
+
+const stopPolling = (): void => {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+};
+
+const installQemu = async (): Promise<void> => {
+  installing.value = true;
+  try {
+    installStatus.value = await VmApi.installQemu();
+    startPolling();
+  } catch (error) {
+    installing.value = false;
+    ElMessage.error(error instanceof Error ? error.message : String(error));
+  }
+};
+
+/** 重新探测引擎：用户在系统里自己装好 QEMU 后也能立刻生效。 */
+const reprobe = async (): Promise<void> => {
+  reprobing.value = true;
+  try {
+    await VmApi.reprobeEngine();
+    await vmStore.load();
+    await refreshQemuPlan();
+  } catch (error) {
+    // 有机器在跑时会被拒绝——把原因如实带出来，不要吞掉。
+    ElMessage.warning(error instanceof Error ? error.message : String(error));
+  } finally {
+    reprobing.value = false;
+  }
+};
+
+onBeforeUnmount(stopPolling);
 
 const changeEngine = async (preference: EnginePreference): Promise<void> => {
   savingEngine.value = true;
@@ -117,6 +233,48 @@ const changeEngine = async (preference: EnginePreference): Promise<void> => {
           <p v-if="noDisplay" class="vm-welcome-reason">{{ t('vm.console.noDisplayHint') }}</p>
           <p v-if="host" class="vm-welcome-host">
             {{ host.os }} / {{ host.arch }} · {{ host.totalMemoryMb }} {{ t('vm.unit.mb') }}
+          </p>
+        </div>
+
+        <!--
+          本机没有 QEMU 时的出口。
+          以前这里只有「请自行安装」，把找官网、选版本、配 PATH 都推给用户；
+          现在是一键获取 + 进度 + 重新检测。
+        -->
+        <div v-if="needsQemu && qemuPlan" class="vm-welcome-card vm-welcome-card-wide">
+          <h4>{{ t('vm.qemu.title') }}</h4>
+          <p class="vm-welcome-engine">
+            {{ qemuPlan.automatic ? t('vm.qemu.lead') : t('vm.qemu.manualLead') }}
+          </p>
+          <p class="vm-welcome-reason">{{ qemuPlan.reason }}</p>
+          <p v-if="qemuPlan.note" class="vm-welcome-host">{{ qemuPlan.note }}</p>
+
+          <template v-if="installBusy">
+            <el-progress :percentage="installPercent" :stroke-width="6" style="margin-top: 10px" />
+            <p class="vm-welcome-host">
+              {{ installStatus?.phase === 'downloading' ? t('vm.qemu.downloading') : t('vm.qemu.installing') }}
+            </p>
+          </template>
+
+          <div v-else class="vm-qemu-actions">
+            <el-button
+              v-if="qemuPlan.automatic"
+              type="primary"
+              size="small"
+              @click="installQemu"
+            >
+              {{ t('vm.qemu.install') }}
+            </el-button>
+            <el-button size="small" :loading="reprobing" @click="reprobe">
+              {{ t('vm.qemu.reprobe') }}
+            </el-button>
+          </div>
+
+          <p v-if="installStatus?.phase === 'failed'" class="vm-welcome-reason">
+            {{ installStatus.error }}
+          </p>
+          <p v-if="!qemuPlan.automatic && qemuPlan.command" class="vm-welcome-host vm-qemu-command">
+            {{ qemuPlan.command }}
           </p>
         </div>
 
@@ -286,5 +444,25 @@ const changeEngine = async (preference: EnginePreference): Promise<void> => {
 
 .vm-welcome-caps li.off .vm-cap-mark {
   color: var(--el-text-color-disabled);
+}
+
+.vm-welcome-card-wide {
+  grid-column: 1 / -1;
+}
+
+.vm-qemu-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.vm-qemu-command {
+  display: block;
+  word-break: break-all;
+  font-family: var(--el-font-family-mono, monospace);
+  background: var(--el-fill-color-light);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-top: 8px;
 }
 </style>

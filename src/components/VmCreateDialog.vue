@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
 import { pickPath } from '@/sdk/runtime';
+import { VmApi } from '@/services/vm-api';
 import { vmStore } from '@/state/vm-store';
 import type { GuestOs, NetworkMode, PortForward, SharedDir, VmCreateInput } from '@/types/vm';
 import SharedDirEditor from './SharedDirEditor.vue';
@@ -35,6 +36,7 @@ const form = reactive<{
   autoResize: boolean;
   audio: boolean;
   rosetta: boolean;
+  storageDir: string;
 }>({
   name: '',
   os: 'linux',
@@ -56,6 +58,7 @@ const form = reactive<{
   autoResize: true,
   audio: true,
   rosetta: false,
+  storageDir: '',
 });
 
 const osOptions = computed(() => [
@@ -101,11 +104,13 @@ const reset = (): void => {
   form.autoResize = true;
   form.audio = true;
   form.rosetta = false;
+  form.storageDir = '';
 };
 
 watch(visible, (open) => {
   if (open) {
     reset();
+    void refreshFreeSpace();
   }
 });
 
@@ -129,6 +134,62 @@ const pickInstaller = async (): Promise<void> => {
 
 // 固件 / 驱动 ISO 只对 QEMU 后端有意义（VZ 走 Apple 自己的 EFI）。
 const isQemu = computed(() => vmStore.state.engine?.kind === 'qemu');
+
+/**
+ * 选择磁盘存放目录。
+ *
+ * 为什么需要这个：默认目录在用户主目录下，而虚拟机动辄几十 GB——系统盘
+ * 常常先满。让用户在创建时就指定数据盘，比事后搬家简单得多。
+ *
+ * 只搬磁盘：`vm.json`/NVRAM/日志必须留在默认目录，否则虚拟机列表扫不到它。
+ */
+const pickStorageDir = async (): Promise<void> => {
+  try {
+    const picked = await pickPath({
+      title: t('vm.create.storageDir'),
+      directory: true,
+    });
+    if (picked) {
+      form.storageDir = picked;
+    }
+  } catch {
+    ElMessage.info(t('vm.action.manualPathPlaceholder'));
+  }
+};
+
+/**
+ * 存储目录的可用空间。
+ *
+ * 只在目录有值时才问，且失败静默：查不到空间不该阻止用户创建虚拟机。
+ * 用户真正填不下时，native 侧建盘前也会拦一次并给出明确数字。
+ */
+const freeSpaceGb = ref<number | null>(null);
+
+const refreshFreeSpace = async (): Promise<void> => {
+  try {
+    const space = await VmApi.getDiskSpace(form.storageDir.trim() || undefined);
+    freeSpaceGb.value =
+      space.availableBytes === null ? null : Math.floor(space.availableBytes / 1024 ** 3);
+  } catch {
+    freeSpaceGb.value = null;
+  }
+};
+
+watch(() => form.storageDir, () => void refreshFreeSpace());
+
+/** 磁盘容量与可用空间的对比结论；null 表示信息不足，不显示提示。 */
+const spaceHint = computed(() => {
+  if (freeSpaceGb.value === null) {
+    return '';
+  }
+  if (freeSpaceGb.value < form.diskSizeGb) {
+    return t('vm.create.storageLow', {
+      free: String(freeSpaceGb.value),
+      need: String(form.diskSizeGb),
+    });
+  }
+  return t('vm.create.storageFree', { free: String(freeSpaceGb.value) });
+});
 
 const pickDriverIso = async (): Promise<void> => {
   try {
@@ -198,6 +259,7 @@ const submit = async (): Promise<void> => {
     rosetta: form.rosetta,
     displayWidth: 1280,
     displayHeight: 800,
+    storageDir: form.storageDir.trim() || null,
   };
   const created = await vmStore.create(input);
   submitting.value = false;
@@ -246,6 +308,23 @@ const submit = async (): Promise<void> => {
       <el-form-item :label="`${t('vm.create.disk')} · ${form.diskSizeGb} ${t('vm.unit.gb')}`">
         <el-slider v-model="form.diskSizeGb" :min="10" :max="512" :step="10" />
         <p class="vm-form-hint">{{ t('vm.create.diskHint') }}</p>
+      </el-form-item>
+
+      <el-form-item :label="t('vm.create.storageDir')">
+        <div class="vm-form-file">
+          <el-input
+            v-model="form.storageDir"
+            :placeholder="t('vm.create.storageDirPlaceholder')"
+          />
+          <el-button @click="pickStorageDir">{{ t('vm.action.pickFolder') }}</el-button>
+          <el-button v-if="form.storageDir" text @click="form.storageDir = ''">
+            {{ t('vm.action.reset') }}
+          </el-button>
+        </div>
+        <p v-if="spaceHint" class="vm-form-hint" :class="{ 'vm-form-warn': freeSpaceGb !== null && freeSpaceGb < form.diskSizeGb }">
+          {{ spaceHint }}
+        </p>
+        <p v-else class="vm-form-hint">{{ t('vm.create.storageDirHint') }}</p>
       </el-form-item>
 
       <el-form-item :label="t('vm.create.installer')">
@@ -347,5 +426,9 @@ const submit = async (): Promise<void> => {
   align-items: center;
   gap: 6px;
   width: 100%;
+}
+
+.vm-form-warn {
+  color: var(--el-color-danger);
 }
 </style>

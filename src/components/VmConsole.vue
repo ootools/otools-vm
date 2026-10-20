@@ -88,7 +88,8 @@ const scheduleSync = (): void => {
 const attach = async (): Promise<void> => {
   // 后端没有画面能力时不必去试：attach 一定失败，还会把错误文案盖掉
   // 我们精心写的「为什么没有画面」。直接返回，让占位说明留在原位。
-  if (!vmStore.state.engine?.caps.displayOutput) {
+  // 引擎不可用（没装 QEMU）时同理——那时 caps 是占位值，试也没意义。
+  if (!vmStore.state.engine?.available || !vmStore.state.engine?.caps.displayOutput) {
     return;
   }
   const rect = computeRect();
@@ -217,12 +218,25 @@ const showEngineFallback = computed(() => props.vm.engine === 'qemu');
  *
  * HCS 后端恒为 false（它没有 framebuffer 接口），此时不该显示「等待画面」的
  * 加载态——那会让用户以为在连、其实永远不会有画面。改成直接说明原因。
+ *
+ * **引擎根本没装好时不走这条分支**：那时 caps 是全 false 的占位值，按
+ * 「后端不支持画面」来解释会误导。让用户先看到引擎不可用的原因。
  */
-const engineHasDisplay = computed(() => vmStore.state.engine?.caps.displayOutput !== false);
+const engineHasDisplay = computed(
+  () => vmStore.state.engine?.available === true && vmStore.state.engine?.caps.displayOutput === true,
+);
 
-/** 后端本轮是否拿得到画面。明白写着「拿不到」时要给出可执行的替代方案。 */
+/**
+ * 后端本轮是否拿得到画面。明白写着「拿不到」时要给出可执行的替代方案。
+ *
+ * 前提是**引擎本身可用**：引擎没装好时（caps 全 false 的占位值）应该让用户
+ * 看到「引擎不可用、去装 QEMU」，而不是「这个后端不提供画面」。
+ */
 const displayUnavailable = computed(
-  () => Boolean(vmStore.state.engine) && !engineHasDisplay.value && props.vm.state !== 'stopped',
+  () =>
+    Boolean(vmStore.state.engine?.available)
+    && !engineHasDisplay.value
+    && props.vm.state !== 'stopped',
 );
 const showError = computed(() => Boolean(props.vm.lastError));
 

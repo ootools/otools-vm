@@ -155,6 +155,56 @@ export interface VmSettings {
   enginePreference: EnginePreference;
 }
 
+/**
+ * QEMU 一键获取的方案。
+ *
+ * 由 native 端按本机实际可用的途径挑一条（winget / 官方安装器 / Homebrew），
+ * 前端只负责展示，不自己判断平台能力——判断逻辑分两处必然漂移。
+ */
+export interface QemuPlan {
+  /** 是否支持一键获取。false 时只能给用户命令让他自己装。 */
+  automatic: boolean;
+  strategy: QemuInstallStrategy;
+  /** 需要用户配合的事（例如「会弹 UAC，请点允许」）。 */
+  note: string;
+  /** 手工安装时给用户复制走的命令或链接。 */
+  command: string;
+  /** 为什么选这条路。 */
+  reason: string;
+  /** 当前平台是否在内置支持范围内（用于区分「不支持」与「装不上」）。 */
+  supportedPlatform: boolean;
+  /** 我们期望的 QEMU 可执行文件路径。 */
+  binaryPath: string;
+}
+
+export type QemuInstallStrategy = 'winget' | 'installer' | 'homebrew' | 'manual';
+
+/** QEMU 获取进度。命令立即返回，靠轮询这个结构显示进度。 */
+export interface QemuInstallStatus {
+  phase: 'idle' | 'downloading' | 'installing' | 'done' | 'failed' | string;
+  strategy: QemuInstallStrategy | string;
+  /** 0 ~ 1。总量未知时为 0。 */
+  progress: number;
+  downloaded: number;
+  total: number;
+  error: string;
+  /** 成功后 QEMU 可执行文件的绝对路径。 */
+  binary: string;
+}
+
+/** 某个目录所在卷的可用空间。 */
+export interface DiskSpace {
+  path: string;
+  /** 取不到时为 null（不应据此判定「空间不足」）。 */
+  availableBytes: number | null;
+}
+
+/** 是否处于安装中（下载也算）。 */
+export function isQemuInstallBusy(status: QemuInstallStatus | null | undefined): boolean {
+  return status?.phase === 'downloading' || status?.phase === 'installing';
+}
+
+
 /** Rosetta 在宿主上的可用状态。 */
 export type RosettaStatus = 'installed' | 'notInstalled' | 'notSupported';
 
@@ -221,6 +271,13 @@ export interface VmCreateInput {
   rosetta?: boolean;
   displayWidth?: number;
   displayHeight?: number;
+  /**
+   * 磁盘存放目录（绝对路径）。留空则放在默认数据目录。
+   *
+   * **只有磁盘会搬**：`vm.json`、NVRAM、日志仍在默认目录，因为虚拟机列表是
+   * 靠扫默认目录发现的；把元数据一起搬走会让机器从列表里消失。
+   */
+  storageDir?: string | null;
 }
 
 export interface VmUpdateInput {

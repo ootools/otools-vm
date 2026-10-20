@@ -186,13 +186,21 @@ export async function pickPath(options: {
     const result = await invokeNative<{ path: string | null }>(command, {
       title: options.title,
     });
-    if (result?.path) {
-      return result.path;
+    // **必须区分「键不存在」与「键为 null」**：
+    // - `path: null` 是 native 明确告诉我们用户点了取消；
+    // - 连 `path` 键都没有，说明这个响应不是选择面板给的（老版本 native、
+    //   或走了别的分支），不能当成取消——那会表现为「点了按钮什么都不发生」。
+    if (!result || typeof result !== 'object' || !('path' in result)) {
+      return openHostDialog({
+        directory: options.directory,
+        title: options.title,
+        filters: options.filters,
+      });
     }
-    // native 明确返回 null 说明用户点了取消，不必再弹宿主对话框。
-    return null;
+    return result.path ?? null;
   } catch {
-    // native 在本平台没有面板，或面板本身创建失败——一律改走宿主对话框。
+    // native 在本平台没有面板（PICK_DIALOG_UNAVAILABLE），或面板本身创建失败
+    // ——一律改走宿主对话框。
     return openHostDialog({
       directory: options.directory,
       title: options.title,

@@ -58,6 +58,39 @@ pub fn remove_vm_dir(id: &str) -> Result<(), String> {
     fs::remove_dir_all(&dir).map_err(|error| format!("删除虚拟机目录失败 {}: {}", dir.display(), error))
 }
 
+/// 删除位于默认目录之外的磁盘文件。
+///
+/// 用户把存储目录选到别的盘时，磁盘不在 `vm_dir` 里，`remove_vm_dir` 清不到。
+/// 只在确认它**确实不在默认目录里**才动——否则会和 `remove_vm_dir` 抢着删，
+/// 或者把别的虚拟机的盘误删（文件名带 id，但目录仍是用户自己挑的）。
+///
+/// 已转换出的 VHDX（HCS 后端用）一并清掉，否则同样会残留。
+pub fn remove_detached_disk(spec: &VmSpec) {
+    let default_dir = paths::vm_dir(&spec.id);
+    let disk = std::path::Path::new(&spec.disk_path);
+    let detached = disk
+        .parent()
+        .map(|parent| parent != default_dir)
+        .unwrap_or(false);
+    if !detached {
+        return;
+    }
+    // 失败只记录不报错：删除虚拟机时元数据已清，磁盘残留是可接受的次优结果，
+    // 不该因此让整个删除操作失败、把用户卡在「删不掉」的状态里。
+    if disk.is_file() {
+        if let Err(error) = fs::remove_file(disk) {
+            eprintln!("[vm] 删除磁盘失败 {}: {}", disk.display(), error);
+        }
+    }
+    // 同一目录下可能还有 HCS 转换出的 .vhdx。
+    let vhdx = disk.with_extension("vhdx");
+    if vhdx.is_file() {
+        if let Err(error) = fs::remove_file(&vhdx) {
+            eprintln!("[vm] 删除磁盘失败 {}: {}", vhdx.display(), error);
+        }
+    }
+}
+
 /// 复制一台虚拟机：规格 + 磁盘 + NVRAM。
 ///
 /// macOS 上用 `cp -c`（APFS clonefile，写时复制）—— 秒级完成、**不占额外空间**，
@@ -69,7 +102,14 @@ pub fn clone_vm(source: &VmSpec, new_id: &str, new_name: &str) -> Result<VmSpec,
     let target_dir = paths::vm_dir(new_id);
     paths::ensure_dir(&target_dir)?;
 
-    let target_disk = paths::vm_disk_path(new_id);
+    // 克隆出来的盘跟着**源盘所在目录**走：用户把源机器放在大容量盘上，
+    // 克隆若回落到用户目录，很快就会把系统盘撑满。
+    let target_disk = match std::path::Path::new(&source.disk_path).parent() {
+        Some(parent) if parent != paths::vm_dir(&source.id) => {
+            parent.join(format!("{}.raw", paths::sanitize_id(new_id)))
+        }
+        _ => paths::vm_disk_path(new_id),
+    };
     clone_file(std::path::Path::new(&source.disk_path), &target_disk)?;
 
     let source_nvram = paths::vm_nvram_path(&source.id);
