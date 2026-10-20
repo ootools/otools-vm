@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { t } from '@/i18n';
 import { isPluginRuntime, isTauriRuntime } from '@/sdk/runtime';
@@ -20,6 +20,17 @@ const resizeVisible = ref(false);
 // 左侧栏是否已收起（给控制台让出更大空间）；收起后工具栏左侧图标可点开切回。
 const sidebarCollapsed = ref(false);
 const selected = computed(() => vmStore.selected.value);
+
+/**
+ * 当前有没有「能展开侧栏的入口」。
+ *
+ * 展开按钮长在 `VmToolbar` 上，而工具栏只在选中虚拟机时才渲染。所以：
+ *   - 欢迎页（没有选中任何机器）→ 工具栏不存在 → 侧栏一旦收起就再也打不开；
+ *   - 选中机器后收起、再把那台机器删掉 → `selected` 变 null，工具栏消失，
+ *     同样卡死。
+ * 这两种情况都必须禁止收起，否则用户只能重开面板。
+ */
+const canCollapseSidebar = computed(() => Boolean(selected.value));
 
 /** 宿主缺 virtualization 权限（版本过旧）。 */
 const needsHostUpgrade = vmStore.needsHostUpgrade;
@@ -83,6 +94,19 @@ onMounted(async () => {
   pollTimer = window.setInterval(poll, 2000);
 });
 
+/**
+ * 兜底：没有选中项时强制展开侧栏。
+ *
+ * 只靠「禁止收起」不够——用户可能先收起、再删除正在看的那台机器，此时
+ * 收起状态已经存在，工具栏又随 `selected` 一起消失，就再也展不开了。
+ * 这里在选中项变空的那一刻把侧栏放回来。
+ */
+watch(selected, (value) => {
+  if (!value && sidebarCollapsed.value) {
+    sidebarCollapsed.value = false;
+  }
+});
+
 onBeforeUnmount(() => {
   if (pollTimer) {
     window.clearInterval(pollTimer);
@@ -102,6 +126,7 @@ onBeforeUnmount(() => {
       <VmSidebar
         v-if="!sidebarCollapsed"
         :selected-id="vmStore.state.selectedId"
+        :can-collapse="canCollapseSidebar"
         @select="vmStore.select"
         @create="createVisible = true"
         @refresh="refresh"

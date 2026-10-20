@@ -14,7 +14,9 @@
  * 2. 点「一键获取」调用 `vm_qemu_install`，随后进入轮询；
  * 3. 创建对话框出现「存储位置」，选目录走宿主 dialog，提交时 `storageDir` 真的传下去；
  * 4. 选完目录会问 `vm_disk_space` 并显示可用空间；
- * 5. 遗留的孤儿虚拟机能列出、能一键清理，且**不误走 `vm_stop`**。
+ * 5. 遗留的孤儿虚拟机能列出、能一键清理，且**不误走 `vm_stop`**；
+ * 6. 没有展开入口时（欢迎页）不给出「收起侧栏」把手；
+ * 7. 选中虚拟机后可收起，并能从工具栏展开。
  */
 const { chromium } = require('playwright');
 const http = require('http');
@@ -80,7 +82,7 @@ window.otools = {
     window.__calls.push({ command: command, payload: payload });
     switch (command) {
       case 'vm_get_workspace':
-        return { engine: engineInfo(false), vms: [], host: {
+        return { engine: engineInfo(false), vms: window.__vms || [], host: {
           os: 'Windows 11', arch: 'x86_64', hostname: 'TEST', recommendedCpus: 8,
           recommendedMemoryMb: 16384, totalMemoryMb: 32768 } };
       case 'vm_hcs_status':
@@ -148,6 +150,18 @@ function check(name, condition, detail) {
     failures.push(`${name}${detail ? ` — ${detail}` : ''}`);
     console.log(`  FAIL  ${name}${detail ? ` — ${detail}` : ''}`);
   }
+}
+
+/** 造一台可被选中的虚拟机（只填 UI 需要的字段）。 */
+function fakeVm(id, name) {
+  return {
+    id, name, state: 'stopped', engine: 'qemu', lastError: '',
+    os: 'linux', arch: 'x86_64', cpus: 4, memoryMb: 4096, diskSizeGb: 40, diskPath: '',
+    firmware: 'bios', firmwarePath: '', driverIso: '', installerPath: '', virtiofsdPath: '',
+    network: 'nat', networkIface: '', bootOrder: [], usbMedia: '', portForwards: [],
+    sharedDirs: [], clipboard: true, autoResize: true, audio: true, rosetta: false,
+    displayWidth: 1280, displayHeight: 800, notes: '', createdAt: 0,
+  };
 }
 
 (async () => {
@@ -258,6 +272,42 @@ function check(name, condition, detail) {
       JSON.stringify(killCall?.payload));
     const afterKill = await page.locator('body').innerText();
     check('清理后卡片消失', !afterKill.includes('vm-alpha'), afterKill.slice(0, 300));
+  }
+
+  console.log('\n[6] 侧栏收起：没有展开入口时不允许收起');
+  // 欢迎页没有选中虚拟机，工具栏（唯一带「展开侧栏」按钮的地方）不渲染，
+  // 所以此时必须不给出收起把手，否则收起后永远打不开。
+  await page.addInitScript(`window.__orphans = []; window.__vms = [];`);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  const collapseHandle = page.getByTitle('收起侧栏');
+  check('欢迎页没有「收起侧栏」把手', (await collapseHandle.count()) === 0);
+  // 欢迎页仍在，说明侧栏没被误收起
+  check('欢迎页侧栏可见', (await page.locator('.vm-sidebar').count()) > 0);
+
+  console.log('\n[7] 选中虚拟机时可以收起，并能从工具栏展开');
+  await page.addInitScript(`window.__vms = [${JSON.stringify(fakeVm('vm-solo', '单机'))}];`);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  const vmItem = page.locator('.vm-item').first();
+  check('列表里出现虚拟机', (await vmItem.count()) > 0);
+  if (await vmItem.count()) {
+    await vmItem.click();
+    await page.waitForTimeout(600);
+    const handle = page.getByTitle('收起侧栏');
+    check('选中后出现「收起侧栏」把手', (await handle.count()) > 0);
+    if (await handle.count()) {
+      await handle.first().click();
+      await page.waitForTimeout(500);
+      check('收起后侧栏消失', (await page.locator('.vm-sidebar').count()) === 0);
+      const expandBtn = page.getByTitle('展开侧栏');
+      check('工具栏出现「展开侧栏」按钮', (await expandBtn.count()) > 0);
+      if (await expandBtn.count()) {
+        await expandBtn.first().click();
+        await page.waitForTimeout(500);
+        check('点展开后侧栏回来', (await page.locator('.vm-sidebar').count()) > 0);
+      }
+    }
   }
 
   await browser.close();

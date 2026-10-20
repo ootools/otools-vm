@@ -5,7 +5,7 @@ import { t } from '@/i18n';
 import { vmStore } from '@/state/vm-store';
 import { formatGb, osIcon, stateColor } from '@/utils/vm-display';
 
-const props = defineProps<{ selectedId: string }>();
+const props = defineProps<{ selectedId: string; canCollapse?: boolean }>();
 const emit = defineEmits<{
   (event: 'select', id: string): void;
   (event: 'create'): void;
@@ -75,7 +75,13 @@ const stateLabel = (state: string): string => t(`vm.state.${state}`);
       <span class="vm-sidebar-count">{{ t('vm.list.count', { count: vms.length }) }}</span>
     </footer>
 
+    <!--
+      收起把手的隐藏条件：没有可用的「展开」入口时不允许收起。
+      展开按钮在工具栏上，而工具栏只在选中虚拟机时出现——欢迎页收起后
+      就再没有入口了，用户只能重开面板。所以这里直接不给出这个把手。
+    -->
     <el-button
+      v-if="props.canCollapse !== false"
       class="vm-sidebar-collapse"
       :icon="Fold"
       circle
