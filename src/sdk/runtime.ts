@@ -15,6 +15,15 @@ type OtoolsApi = {
   getPluginUuid?: () => string;
   shellOpenPath?: (path: string) => unknown;
   shellOpenExternal?: (url: string) => unknown;
+  dialog?: {
+    open?: (options?: {
+      directory?: boolean;
+      multiple?: boolean;
+      title?: string;
+      defaultPath?: string;
+      filters?: { name: string; extensions: string[] }[];
+    }) => Promise<string | string[] | null>;
+  };
 };
 
 type RuntimeWindow = Window & {
@@ -125,6 +134,72 @@ export const openHostPath = (path: string): void => {
     void api.shellOpenPath(path);
   }
 };
+
+/** 宿主没有提供对话框能力时的标记：调用方据此降级为手动输入。 */
+export const HOST_DIALOG_UNAVAILABLE = 'HOST_DIALOG_UNAVAILABLE';
+
+/**
+ * 弹出宿主提供的文件 / 目录选择框，返回绝对路径；取消返回 null。
+ *
+ * **为什么要走宿主而不是插件自己实现**：宿主的 `otools.dialog.open()` 底层是
+ * Tauri 的 `plugin:dialog|open`，Windows / macOS / Linux 全平台都有原生面板，
+ * 而且拿不到插件命令时会自动回退到 webview_fs 通道，网页形态同样可用。
+ * 插件 native 侧只有 macOS 用 AppKit 实现了面板，其它平台本就不该重复造。
+ */
+export async function openHostDialog(options: {
+  directory?: boolean;
+  title?: string;
+  filters?: { name: string; extensions: string[] }[];
+}): Promise<string | null> {
+  const api = readApi();
+  const dialog = api?.dialog;
+  if (!dialog?.open) {
+    // 脱离宿主直接打开页面时没有对话框能力，交给调用方降级。
+    throw new Error(HOST_DIALOG_UNAVAILABLE);
+  }
+  const picked = await dialog.open({
+    directory: options.directory === true,
+    title: options.title,
+    filters: options.filters,
+  });
+  // multiple 没开时正常返回 string；数组取第一个，null 表示用户取消。
+  if (Array.isArray(picked)) {
+    return picked[0] ?? null;
+  }
+  return typeof picked === 'string' && picked.trim() ? picked : null;
+}
+
+/**
+ * 选择文件 / 目录：优先 native（macOS 用 AppKit 面板，与 VZ 窗口模型一致），
+ * native 明确表示「本平台没有」时自动改走宿主对话框。
+ *
+ * 返回 null 表示用户取消或拿不到选择能力，调用方据此保持原值。
+ */
+export async function pickPath(options: {
+  directory?: boolean;
+  title: string;
+  /** 仅文件选择时生效。 */
+  filters?: { name: string; extensions: string[] }[];
+}): Promise<string | null> {
+  const command = options.directory ? 'vm_pick_folder' : 'vm_pick_file';
+  try {
+    const result = await invokeNative<{ path: string | null }>(command, {
+      title: options.title,
+    });
+    if (result?.path) {
+      return result.path;
+    }
+    // native 明确返回 null 说明用户点了取消，不必再弹宿主对话框。
+    return null;
+  } catch {
+    // native 在本平台没有面板，或面板本身创建失败——一律改走宿主对话框。
+    return openHostDialog({
+      directory: options.directory,
+      title: options.title,
+      filters: options.filters,
+    });
+  }
+}
 
 export const openHostExternal = (url: string): void => {
   const api = readApi();

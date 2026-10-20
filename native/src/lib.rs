@@ -382,12 +382,22 @@ fn pick_path(title: &str, directory: bool) -> Result<Value, String> {
         };
         Ok(json!({ "path": picked }))
     }
+    // 非 macOS 宿主没有本机原生面板——**但要回到前端去走宿主提供的
+    // `otools.dialog.open()`**（Tauri 的 tauri-plugin-dialog，网页/App 都能用），
+    // 而不是在这里自己造一个。这里返回错误即是给前端的信号：
+    // 收到该错误就切换到宿主对话框，两边都不再依赖「用户手动粘贴路径」。
     #[cfg(not(target_os = "macos"))]
     {
         let _ = (title, directory);
-        Err("当前平台请手动输入路径".to_string())
+        Err(PICK_DIALOG_UNAVAILABLE.to_string())
     }
 }
+
+/// 非 macOS 宿主上 `vm_pick_file` / `vm_pick_folder` 的统一错误标记。
+///
+/// 前端用它精确判断「不是真失败，是该走宿主对话框了」，避免用模糊的
+/// 字符串匹配或把真正的错误也一并吞掉。
+const PICK_DIALOG_UNAVAILABLE: &str = "PICK_DIALOG_UNAVAILABLE";
 
 fn cmd_clone(payload: &Value) -> Result<Value, String> {
     let input: VmCloneInput = serde_json::from_value(payload.clone())

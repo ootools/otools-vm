@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { Plus, FolderOpened, Close } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
-import { VmApi } from '@/services/vm-api';
+import { pickPath } from '@/sdk/runtime';
 import { vmStore } from '@/state/vm-store';
 import type { SharedDir } from '@/types/vm';
 
@@ -83,13 +83,16 @@ const pushPath = (hostPath: string): boolean => {
 
 const addDirectory = async (): Promise<void> => {
   try {
-    const picked = await VmApi.pickFolder(t('vm.action.addSharedDir'));
-    if (picked?.path) {
-      pushPath(picked.path);
+    const picked = await pickPath({
+      directory: true,
+      title: t('vm.action.addSharedDir'),
+    });
+    if (picked) {
+      pushPath(picked);
     }
-    // picked.path === null 表示用户取消，保持现状即可。
+    // null 表示用户取消，保持现状即可。
   } catch {
-    // 非 macOS 宿主没有原生面板：直接切到手动输入，而不是只弹一个错误。
+    // 宿主对话框也拿不到时，切到手动输入而不是只弹一个错误。
     manualMode.value = true;
   }
 };

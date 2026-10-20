@@ -62,10 +62,8 @@ export const VmApi = {
     invokeNative<{ ok: boolean }>('vm_update_view_rect', { id, rect }),
   detachView: (id: string) => invokeNative<{ ok: boolean }>('vm_detach_view', { id }),
 
-  pickFolder: (title: string) =>
-    invokeNative<{ path: string | null }>('vm_pick_folder', { title }),
-  pickFile: (title: string) =>
-    invokeNative<{ path: string | null }>('vm_pick_file', { title }),
+  // 路径选择不放这里：它是「native 优先、宿主 dialog 兜底」的跨平台逻辑，
+  // 统一走 `@/sdk/runtime` 的 `pickPath()`，避免出现两套调用方式。
 
   shutdown: () => invokeNative<{ ok: boolean }>('vm_shutdown'),
 };

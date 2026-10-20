@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { ArrowUp, ArrowDown, Close, Plus } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
-import { VmApi } from '@/services/vm-api';
+import { pickPath } from '@/sdk/runtime';
 
 /** 设备管理：启动顺序、U 盘介质。网络相关（端口转发）在 VmNetworkManager。 */
 export interface DeviceConfig {
@@ -63,12 +63,14 @@ const addBoot = (): void => {
 
 const pickUsbMedia = async (): Promise<void> => {
   try {
-    const picked = await VmApi.pickFile(t('vm.device.usbMedia'));
-    if (picked?.path) {
-      patch({ usbMedia: picked.path });
+    const picked = await pickPath({
+      title: t('vm.device.usbMedia'),
+      filters: [{ name: t('vm.action.imageFilter'), extensions: ['img', 'raw', 'iso'] }],
+    });
+    if (picked) {
+      patch({ usbMedia: picked });
     }
   } catch {
-    // 非 macOS 宿主没有原生面板；输入框本身可编辑，粘贴绝对路径即可。
     ElMessage.info(t('vm.action.manualPathPlaceholder'));
   }
 };

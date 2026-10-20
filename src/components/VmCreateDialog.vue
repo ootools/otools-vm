@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
-import { VmApi } from '@/services/vm-api';
+import { pickPath } from '@/sdk/runtime';
 import { vmStore } from '@/state/vm-store';
 import type { GuestOs, NetworkMode, PortForward, SharedDir, VmCreateInput } from '@/types/vm';
 import SharedDirEditor from './SharedDirEditor.vue';
@@ -109,14 +109,20 @@ watch(visible, (open) => {
   }
 });
 
+// 安装介质常见后缀；宿主对话框按此过滤，减少选错文件。
+const IMAGE_EXTENSIONS = ['iso', 'img', 'raw', 'qcow2', 'vmdk', 'vdi', 'vhdx'];
+
 const pickInstaller = async (): Promise<void> => {
   try {
-    const picked = await VmApi.pickFile(t('vm.create.installer'));
-    if (picked?.path) {
-      form.installerPath = picked.path;
+    const picked = await pickPath({
+      title: t('vm.create.installer'),
+      filters: [{ name: t('vm.action.imageFilter'), extensions: IMAGE_EXTENSIONS }],
+    });
+    if (picked) {
+      form.installerPath = picked;
     }
   } catch {
-    // 非 macOS 宿主没有原生面板；输入框本身可编辑，直接粘贴绝对路径即可。
+    // 连宿主对话框都拿不到（例如纯浏览器直开）：提示改用粘贴。
     ElMessage.info(t('vm.action.manualPathPlaceholder'));
   }
 };
@@ -126,9 +132,12 @@ const isQemu = computed(() => vmStore.state.engine?.kind === 'qemu');
 
 const pickDriverIso = async (): Promise<void> => {
   try {
-    const picked = await VmApi.pickFile(t('vm.create.driverIso'));
-    if (picked?.path) {
-      form.driverIso = picked.path;
+    const picked = await pickPath({
+      title: t('vm.create.driverIso'),
+      filters: [{ name: t('vm.action.imageFilter'), extensions: IMAGE_EXTENSIONS }],
+    });
+    if (picked) {
+      form.driverIso = picked;
     }
   } catch {
     ElMessage.info(t('vm.action.manualPathPlaceholder'));
