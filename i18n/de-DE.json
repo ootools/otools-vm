@@ -159,7 +159,7 @@
   "vm.engine.prefAuto": "Standard (QEMU)",
   "vm.engine.prefAutoHint": "Mit Bild, beste Kompatibilität",
   "vm.engine.prefHcs": "HCS (Windows-nativ)",
-  "vm.engine.prefSaved": "Engine-Einstellung gespeichert; Plugin neu starten, um sie anzuwenden",
+  "vm.engine.prefSaved": "Engine gewechselt. Wirkt sofort.",
   "vm.share.protocol9p": "9p · unter Linux sofort nutzbar",
   "vm.share.protocolVirtiofs": "virtio-fs · erfordert Linux-Host",
   "vm.share.virtiofsUnsupported": "virtio-fs erfordert einen Linux-Host mit virtiofsd, der auf diesem Host nicht verfügbar ist. Verwenden Sie 9p.",
@@ -211,7 +211,7 @@
   "vm.share.smbHint": "Wird vom Host-Dateidienst bereitgestellt; Windows-Gäste brauchen keinen Treiber.",
   "vm.console.mountHintSmb": "Im Gast: net use Z: \\\\{host}\\{name} (oder den Pfad im Explorer öffnen)",
   "vm.console.noDisplayTitle": "Dieses Backend liefert kein Bild",
-  "vm.console.noDisplayHint": "Die HCS-Engine hat keine Bildausgabe-API. Die VM läuft im Hintergrund weiter, aber ihr Desktop ist nicht sichtbar. Für ein Bild bitte das QEMU-Backend verwenden.",
+  "vm.console.noDisplayHint": "Die HCS-Engine hat keine Bildausgabe: Die VM läuft im Hintergrund, aber der Desktop ist nicht sichtbar. Wechseln Sie zu QEMU, um eine Anzeige zu erhalten (die VM wird zuvor ausgeschaltet).",
   "vm.console.noDisplayFoot": "HCS hat keine Bild-API: Die VM läuft weiter und lässt sich stoppen oder pausieren",
   "vm.hcs.title": "HCS-Engine",
   "vm.hcs.available": "Verfügbar",
@@ -234,5 +234,8 @@
   "vm.hcs.orphanKilled": "Zurückgebliebene virtuelle Maschinen aufgeräumt",
   "vm.hcs.orphanPartial": "{done} aufgeräumt, aber {rest} konnten nicht beendet werden. Erneut versuchen oder das System neu starten.",
   "vm.settings.liveMemory": "Die VM läuft: Hier lässt sich nur der Arbeitsspeicher ändern. Für alles andere zuerst ausschalten.",
-  "vm.settings.liveReadonly": "Die VM läuft und die aktuelle Engine kann Einstellungen nicht im Betrieb ändern. Bitte zuerst ausschalten."
+  "vm.settings.liveReadonly": "Die VM läuft und die aktuelle Engine kann Einstellungen nicht im Betrieb ändern. Bitte zuerst ausschalten.",
+  "vm.console.switchToQemu": "Zu QEMU wechseln für Bildausgabe",
+  "vm.console.switchToQemuHint": "Diese VM wird zuerst ausgeschaltet. QEMU ist langsamer als HCS, zeigt aber den Desktop.",
+  "vm.console.switchedToQemu": "Zu QEMU gewechselt. Nach dem erneuten Start ist die Anzeige verfügbar."
 }

@@ -159,7 +159,7 @@
   "vm.engine.prefAuto": "Predeterminado (QEMU)",
   "vm.engine.prefAutoHint": "Con imagen y máxima compatibilidad",
   "vm.engine.prefHcs": "HCS (nativo de Windows)",
-  "vm.engine.prefSaved": "Preferencia guardada; reinicia el plugin para aplicarla",
+  "vm.engine.prefSaved": "Motor cambiado. Se aplica de inmediato.",
   "vm.share.protocol9p": "9p · funciona en Linux sin configuración",
   "vm.share.protocolVirtiofs": "virtio-fs · requiere host Linux",
   "vm.share.virtiofsUnsupported": "virtio-fs requiere un host Linux con virtiofsd, que este host no proporciona. Usa 9p.",
@@ -211,7 +211,7 @@
   "vm.share.smbHint": "Lo sirve el servicio de archivos del host; los invitados Windows no necesitan controladores.",
   "vm.console.mountHintSmb": "En el invitado: net use Z: \\\\{host}\\{name} (o abre la ruta en el Explorador)",
   "vm.console.noDisplayTitle": "Este backend no ofrece imagen",
-  "vm.console.noDisplayHint": "El motor HCS no tiene API de salida de imagen. La máquina sigue ejecutándose en segundo plano pero su escritorio no es visible. Usa el backend QEMU cuando necesites pantalla.",
+  "vm.console.noDisplayHint": "El motor HCS no tiene salida de vídeo: la máquina virtual se ejecuta en segundo plano pero no puede ver el escritorio. Cambie a QEMU para tener pantalla (la máquina se apagará primero).",
   "vm.console.noDisplayFoot": "HCS no tiene API de imagen: la máquina sigue en marcha y se puede detener o pausar",
   "vm.hcs.title": "Motor HCS",
   "vm.hcs.available": "Disponible",
@@ -234,5 +234,8 @@
   "vm.hcs.orphanKilled": "Máquinas virtuales restantes limpiadas",
   "vm.hcs.orphanPartial": "Se limpiaron {done}, pero {rest} no se pudieron detener. Reintente o reinicie el sistema.",
   "vm.settings.liveMemory": "La máquina virtual está en ejecución: aquí solo se puede cambiar la memoria. Apáguela para editar lo demás.",
-  "vm.settings.liveReadonly": "La máquina virtual está en ejecución y el motor actual no permite cambios en caliente. Apáguela primero."
+  "vm.settings.liveReadonly": "La máquina virtual está en ejecución y el motor actual no permite cambios en caliente. Apáguela primero.",
+  "vm.console.switchToQemu": "Cambiar a QEMU para ver la pantalla",
+  "vm.console.switchToQemuHint": "Esta máquina se apagará primero. QEMU es más lento que HCS pero muestra el escritorio.",
+  "vm.console.switchedToQemu": "Cambiado a QEMU. Inicie la máquina de nuevo para ver la pantalla."
 }

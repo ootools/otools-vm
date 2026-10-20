@@ -267,6 +267,43 @@ const copyMountCommand = async (): Promise<void> => {
     ElMessage.info(mountCommand.value);
   }
 };
+
+// ---------------------------------------------------- HCS 无画面的脱身路径
+
+/**
+ * 能否一键切回 QEMU 拿画面。
+ *
+ * 只在「当前是 HCS、机器在跑、但拿不到画面」时给出这个出口。切引擎要求机器
+ * 全关，所以按钮本身是「先关机再切引擎」的复合动作，文案要说清楚这一点。
+ */
+const canSwitchToQemu = computed(
+  () => displayUnavailable.value && vmStore.state.engine?.kind === 'hcs',
+);
+
+const switching = ref(false);
+
+const switchToQemu = async (): Promise<void> => {
+  const current = props.vm;
+  switching.value = true;
+  try {
+    // 先关机：切引擎会丢掉旧引擎的句柄表，机器还在跑就会变孤儿。
+    if (current.state !== 'stopped') {
+      const stopped = await vmStore.stop(current.id);
+      if (!stopped) {
+        ElMessage.error(vmStore.state.lastActionError || t('vm.error.action'));
+        return;
+      }
+    }
+    await VmApi.setEnginePreference('qemu');
+    // 引擎已立即重建，刷新一次就能拿到 QEMU 的能力集与画面入口。
+    await vmStore.load();
+    ElMessage.success(t('vm.console.switchedToQemu'));
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : String(error));
+  } finally {
+    switching.value = false;
+  }
+};
 </script>
 
 <template>
@@ -290,6 +327,17 @@ const copyMountCommand = async (): Promise<void> => {
         {{ mountCommand }}
       </p>
       <p v-else class="vm-console-note">{{ t('vm.console.agentHint') }}</p>
+
+      <!--
+        无画面时的出口放在 footer：占位区只在 `!active` 时渲染，而 HCS 的机器
+        恰恰是「运行中但没有画面」（active 为真），按钮留在占位区里就永远不出现。
+      -->
+      <div v-if="canSwitchToQemu" class="vm-console-switch-row">
+        <el-button size="small" type="primary" :loading="switching" @click="switchToQemu">
+          {{ t('vm.console.switchToQemu') }}
+        </el-button>
+        <span class="vm-console-switch-hint">{{ t('vm.console.switchToQemuHint') }}</span>
+      </div>
     </footer>
   </div>
 </template>
@@ -341,6 +389,22 @@ const copyMountCommand = async (): Promise<void> => {
 .vm-console-placeholder p {
   margin: 0;
   font-size: 11px;
+}
+
+/* 无画面时的出口行：按钮 + 一句代价说明，横排在底栏里。 */
+.vm-console-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.vm-console-switch-hint {
+  margin: 0 !important;
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.7;
 }
 
 .vm-console-foot {

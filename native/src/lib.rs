@@ -611,9 +611,35 @@ fn cmd_set_engine_preference(payload: &Value) -> Result<Value, String> {
         "qemu" => settings::EnginePreference::Qemu,
         other => return Err(format!("未知的引擎偏好: {}", other)),
     };
+
+    // 有机器在跑时不能换引擎：换掉等于丢掉旧引擎的子进程/句柄表，
+    // 运行中的虚拟机会变成谁也管不到的孤儿。必须当场拒绝并说清楚，
+    // 而不是「写进配置、下次重启才生效」——后者会让用户以为切换失败了。
+    let running: Vec<String> = store::list_specs()
+        .into_iter()
+        .filter(|spec| {
+            let state = engine().state(spec);
+            state != model::VmState::Stopped
+                && state != model::VmState::Error
+                && state != model::VmState::Unavailable
+        })
+        .map(|spec| spec.name)
+        .collect();
+    if !running.is_empty() {
+        return Err(format!(
+            "请先关闭正在运行的虚拟机（{}）再切换引擎",
+            running.join("、")
+        ));
+    }
+
     let mut current = settings::load();
     current.engine_preference = preference;
     settings::save(&current)?;
+
+    // 立即重建：用户切换引擎的动机几乎总是「现在就要画面/现在就要性能」，
+    // 让他去重启插件等于把这一步做废。上面已经确认没有机器在跑，安全。
+    let _ = rebuild_engine();
+
     serde_json::to_value(current).map_err(|error| error.to_string())
 }
 

@@ -159,7 +159,7 @@
   "vm.engine.prefAuto": "افتراضي (QEMU)",
   "vm.engine.prefAutoHint": "يدعم الشاشة وأفضل توافقًا",
   "vm.engine.prefHcs": "HCS (أصلي في Windows)",
-  "vm.engine.prefSaved": "تم حفظ تفضيل المحرك، أعد تشغيل الإضافة لتطبيقه",
+  "vm.engine.prefSaved": "تم تبديل المحرك. يسري فورًا.",
   "vm.share.protocol9p": "9p · يعمل على Linux مباشرة",
   "vm.share.protocolVirtiofs": "virtio-fs · يتطلب مضيف Linux",
   "vm.share.virtiofsUnsupported": "يتطلب virtio-fs مضيف Linux مع virtiofsd، وهو غير متوفر على هذا المضيف. استخدم 9p.",
@@ -211,7 +211,7 @@
   "vm.share.smbHint": "توفّرها خدمة ملفات المضيف؛ لا يحتاج ضيف Windows إلى تعريفات.",
   "vm.console.mountHintSmb": "في الضيف: net use Z: \\\\{host}\\{name} (أو افتح المسار في المستكشف)",
   "vm.console.noDisplayTitle": "هذا المحرك لا يوفر شاشة",
-  "vm.console.noDisplayHint": "لا يملك محرك HCS واجهة لإخراج الشاشة. تبقى الآلة تعمل في الخلفية لكن سطح مكتبها غير مرئي. استخدم محرك QEMU عندما تحتاج إلى شاشة.",
+  "vm.console.noDisplayHint": "لا يوفر محرك HCS إخراجًا للصورة: يعمل الجهاز الظاهري في الخلفية لكن لا يمكنك رؤية سطح المكتب. بدّل إلى QEMU للحصول على شاشة (سيتم إيقاف تشغيل الجهاز أولاً).",
   "vm.console.noDisplayFoot": "لا يملك HCS واجهة شاشة: الآلة ما زالت تعمل ويمكن إيقافها أو تعليقها",
   "vm.hcs.title": "محرك HCS",
   "vm.hcs.available": "متاح",
@@ -234,5 +234,8 @@
   "vm.hcs.orphanKilled": "تم تنظيف الأجهزة الظاهرية المتبقية",
   "vm.hcs.orphanPartial": "تم تنظيف {done}، لكن تعذّر إيقاف {rest}. أعد المحاولة أو أعد تشغيل النظام.",
   "vm.settings.liveMemory": "الجهاز الظاهري قيد التشغيل: يمكن تغيير الذاكرة فقط هنا. أوقف تشغيله لتعديل أي إعداد آخر.",
-  "vm.settings.liveReadonly": "الجهاز الظاهري قيد التشغيل والمحرك الحالي لا يدعم تغيير الإعدادات أثناء التشغيل. أوقف تشغيله أولاً."
+  "vm.settings.liveReadonly": "الجهاز الظاهري قيد التشغيل والمحرك الحالي لا يدعم تغيير الإعدادات أثناء التشغيل. أوقف تشغيله أولاً.",
+  "vm.console.switchToQemu": "التبديل إلى QEMU لعرض الشاشة",
+  "vm.console.switchToQemuHint": "سيتم إيقاف تشغيل هذا الجهاز أولاً. QEMU أبطأ من HCS لكنه يعرض سطح المكتب.",
+  "vm.console.switchedToQemu": "تم التبديل إلى QEMU. شغّل الجهاز مرة أخرى لرؤية الشاشة."
 }

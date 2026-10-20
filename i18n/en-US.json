@@ -159,7 +159,7 @@
   "vm.engine.prefAuto": "Default (QEMU)",
   "vm.engine.prefAutoHint": "Has display, best compatibility",
   "vm.engine.prefHcs": "HCS (Windows native)",
-  "vm.engine.prefSaved": "Engine preference saved; restart the plugin to apply",
+  "vm.engine.prefSaved": "Engine switched. It takes effect immediately.",
   "vm.share.protocol9p": "9p · works on Linux out of the box",
   "vm.share.protocolVirtiofs": "virtio-fs · needs a Linux host",
   "vm.share.virtiofsUnsupported": "virtio-fs needs a Linux host with virtiofsd, which this host does not provide. Use 9p instead.",
@@ -211,7 +211,7 @@
   "vm.share.smbHint": "Served by the host file service; Windows guests need no driver.",
   "vm.console.mountHintSmb": "In the guest: net use Z: \\\\{host}\\{name} (or open the path in Explorer)",
   "vm.console.noDisplayTitle": "No display with this backend",
-  "vm.console.noDisplayHint": "The HCS engine has no display output API. The VM keeps running in the background but its desktop is not visible. Use the QEMU backend when you need a screen.",
+  "vm.console.noDisplayHint": "The HCS engine has no display output: the VM runs in the background but you cannot see the desktop. Switch to QEMU to get a display (the VM will be powered off first).",
   "vm.console.noDisplayFoot": "HCS has no display API: the VM is still running and can be stopped or paused",
   "vm.hcs.title": "HCS engine",
   "vm.hcs.available": "Available",
@@ -234,5 +234,8 @@
   "vm.hcs.orphanKilled": "Leftover virtual machines cleaned up",
   "vm.hcs.orphanPartial": "Cleaned up {done}, but {rest} could not be stopped. Retry or restart the system.",
   "vm.settings.liveMemory": "The VM is running: only memory can be changed here. Power it off to edit anything else.",
-  "vm.settings.liveReadonly": "The VM is running and the current engine cannot change settings live. Power it off first."
+  "vm.settings.liveReadonly": "The VM is running and the current engine cannot change settings live. Power it off first.",
+  "vm.console.switchToQemu": "Switch to QEMU for display",
+  "vm.console.switchToQemuHint": "This VM will be powered off first. QEMU is slower than HCS but shows the desktop.",
+  "vm.console.switchedToQemu": "Switched to QEMU. Start the VM again to see the display."
 }

@@ -69,7 +69,12 @@ export const VmApi = {
 
   getSettings: () => invokeNative<VmSettings>('vm_get_settings'),
 
-  /** 切换引擎偏好。**需要重启插件生效**（引擎是进程级单例）。 */
+  /**
+   * 切换引擎偏好，**立即生效**（native 侧会重建引擎）。
+   *
+   * 有虚拟机在运行时会被拒绝——换引擎会丢掉旧引擎的句柄/子进程表，
+   * 那些机器会变成谁也管不到的孤儿。前端应先把机器关掉再调。
+   */
   setEnginePreference: (preference: EnginePreference) =>
     invokeNative<VmSettings>('vm_set_engine_preference', { preference }),
 

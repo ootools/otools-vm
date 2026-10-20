@@ -159,7 +159,7 @@
   "vm.engine.prefAuto": "기본 (QEMU)",
   "vm.engine.prefAutoHint": "화면 지원, 호환성 최고",
   "vm.engine.prefHcs": "HCS (Windows 네이티브)",
-  "vm.engine.prefSaved": "엔진 설정이 저장되었습니다. 플러그인을 다시 시작하면 적용됩니다",
+  "vm.engine.prefSaved": "엔진을 전환했습니다. 즉시 적용됩니다.",
   "vm.share.protocol9p": "9p · Linux에서 바로 사용 가능",
   "vm.share.protocolVirtiofs": "virtio-fs · Linux 호스트 필요",
   "vm.share.virtiofsUnsupported": "virtio-fs에는 virtiofsd가 있는 Linux 호스트가 필요하며 현재 호스트에서는 사용할 수 없습니다. 9p를 사용하세요.",
@@ -211,7 +211,7 @@
   "vm.share.smbHint": "호스트 파일 서비스가 제공하며 Windows 게스트에 드라이버가 필요 없습니다.",
   "vm.console.mountHintSmb": "게스트에서 실행: net use Z: \\\\{host}\\{name} (또는 탐색기에서 경로 열기)",
   "vm.console.noDisplayTitle": "이 백엔드는 화면을 제공하지 않습니다",
-  "vm.console.noDisplayHint": "HCS 엔진에는 화면 출력 API가 없습니다. 가상 머신은 백그라운드에서 실행되지만 데스크톱은 보이지 않습니다. 화면이 필요하면 QEMU 백엔드로 실행하세요.",
+  "vm.console.noDisplayHint": "HCS 엔진에는 화면 출력 인터페이스가 없습니다. 가상 머신은 백그라운드에서 실행되지만 데스크톱을 볼 수 없습니다. QEMU로 전환하면 화면이 표시됩니다(먼저 전원이 꺼집니다).",
   "vm.console.noDisplayFoot": "HCS에는 화면 API가 없습니다. 머신은 계속 실행 중이며 중지나 일시정지가 가능합니다",
   "vm.hcs.title": "HCS 엔진",
   "vm.hcs.available": "사용 가능",
@@ -234,5 +234,8 @@
   "vm.hcs.orphanKilled": "남아 있던 가상 머신을 정리했습니다",
   "vm.hcs.orphanPartial": "{done}대를 정리했지만 {rest}대를 중지하지 못했습니다. 다시 시도하거나 시스템을 재시작하세요.",
   "vm.settings.liveMemory": "가상 머신이 실행 중입니다. 여기서는 메모리만 변경할 수 있으며, 나머지 설정은 전원을 끈 뒤 변경하세요.",
-  "vm.settings.liveReadonly": "가상 머신이 실행 중이며 현재 엔진은 실행 중 설정 변경을 지원하지 않습니다. 먼저 전원을 끄세요."
+  "vm.settings.liveReadonly": "가상 머신이 실행 중이며 현재 엔진은 실행 중 설정 변경을 지원하지 않습니다. 먼저 전원을 끄세요.",
+  "vm.console.switchToQemu": "QEMU로 전환해 화면 보기",
+  "vm.console.switchToQemuHint": "먼저 이 가상 머신의 전원을 끕니다. QEMU는 HCS보다 느리지만 데스크톱을 볼 수 있습니다.",
+  "vm.console.switchedToQemu": "QEMU로 전환했습니다. 다시 시작하면 화면이 표시됩니다."
 }

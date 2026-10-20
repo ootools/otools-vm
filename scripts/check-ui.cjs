@@ -17,7 +17,8 @@
  * 5. 遗留的孤儿虚拟机能列出、能一键清理，且**不误走 `vm_stop`**；
  * 6. 没有展开入口时（欢迎页）不给出「收起侧栏」把手；
  * 7. 选中虚拟机后可收起，并能从工具栏展开；
- * 8. 运行中设置面板只放开内存，其余配置被 inert 锁住。
+ * 8. 运行中设置面板只放开内存，其余配置被 inert 锁住；
+ * 9. HCS 无画面时给出一键切回 QEMU 的出口，且**先关机再切引擎**。
  */
 const { chromium } = require('playwright');
 const http = require('http');
@@ -55,18 +56,22 @@ window.__calls = [];
 window.__dialogPath = 'D:/VMs/storage';
 
 function engineInfo(available, kind) {
+  const hcs = kind === 'hcs';
   return {
     kind: kind || 'qemu',
     available: available,
-    label: 'QEMU',
+    label: hcs ? 'HCS' : 'QEMU',
     reason: available ? '' : '未找到 qemu-system-*。可以在设置里一键获取，装好后无需重启宿主。',
-    version: available ? 'QEMU 10.0.0' : '',
+    version: available ? (hcs ? '10.0.26100' : 'QEMU 10.0.0') : '',
     hostEntitled: true,
     accelerator: available ? 'whpx' : null,
     caps: {
-      nativeView: false, sharedDirs: true, sharedDirsGuests: ['linux','windows'],
-      clipboard: false, autoResize: false, audio: true, snapshots: false,
-      clone: true, resizeDisk: true, rosetta: false, bridgedNetwork: true, displayOutput: true
+      nativeView: false, sharedDirs: !hcs, sharedDirsGuests: hcs ? [] : ['linux','windows'],
+      clipboard: false, autoResize: false, audio: !hcs, snapshots: false,
+      clone: !hcs, resizeDisk: true, rosetta: false, bridgedNetwork: !hcs,
+      // HCS 没有 framebuffer 接口——这正是「切回 QEMU」那条路径存在的理由。
+      // 桩里必须如实反映，否则无画面分支根本走不到。
+      displayOutput: !hcs,
     }
   };
 }
@@ -93,6 +98,13 @@ window.otools = {
           inHyperVAdmins: false, reason: '需要管理员权限', version: '10.0.26100' };
       case 'vm_get_settings':
         return { enginePreference: 'auto' };
+      case 'vm_set_engine_preference':
+        // 忠实模拟 native：切换后引擎立刻变。否则「切回 QEMU 就有画面」这条
+        // 路径测不出来——前端刷新后仍会拿到旧的 HCS 能力集。
+        window.__engineKind = (payload && payload.preference) === 'hcs' ? 'hcs' : 'qemu';
+        window.__engineAvailable = true;
+        window.__prefCalls = (window.__prefCalls || []).concat([payload && payload.preference]);
+        return { enginePreference: (payload && payload.preference) || 'auto' };
       case 'vm_qemu_plan':
         return { automatic: true, strategy: 'winget', note: '安装时可能弹出系统提权确认，请选择「是」。',
           command: 'winget install -e --id SoftwareFreedomConservancy.QEMU',
@@ -115,6 +127,14 @@ window.otools = {
           networkIface: '', bootOrder: [], usbMedia: '', portForwards: [], sharedDirs: [],
           clipboard: true, autoResize: true, audio: true, rosetta: false,
           displayWidth: 1280, displayHeight: 800, notes: '', createdAt: 0 };
+      case 'vm_stop':
+        // 关机后状态要真的变，否则「先关机再切引擎」那条链路会卡在运行中。
+        if (window.__vms) {
+          window.__vms = window.__vms.map((item) =>
+            item.id === (payload && payload.id) ? { ...item, state: 'stopped' } : item,
+          );
+        }
+        return { ok: true };
       case 'vm_start':
         return { ok: true };
       case 'vm_rosetta_status':
@@ -349,6 +369,41 @@ function fakeVm(id, name) {
       node.classList.contains('is-disabled'),
     );
     check('内存滑块仍可用', memDisabled === false);
+  }
+
+  console.log('\n[9] HCS 无画面 → 一键切回 QEMU');
+  // HCS 拿不到画面是这套后端最大的使用障碍。以前界面只解释原因、不给出口，
+  // 引擎偏好藏在别处、切换还要重启插件。这条用例保证「点了真能切过去」。
+  //
+  // 注意：`addInitScript` 会**累积**（新脚本在旧脚本之后执行），所以这里必须
+  // 重新赋值而不是追加列表，否则前面用例的机器会留在 __vms 里，.first()
+  // 选中的还是上一组那台。
+  const hcsVm = { ...fakeVm('vm-hcs', 'HCS 机器'), state: 'running', engine: 'hcs' };
+  await page.addInitScript(
+    `window.__vms = [${JSON.stringify(hcsVm)}]; window.__engineKind = 'hcs'; window.__engineAvailable = true; window.__prefCalls = [];`,
+  );
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  await page.locator('.vm-item').filter({ hasText: 'HCS 机器' }).first().click();
+  await page.waitForTimeout(700);
+  const consoleText = await page.locator('.vm-console').innerText();
+  // 机器正在运行时占位区（含 noDisplayHint）不渲染，底栏的 noDisplayFoot 才是
+  // 用户实际看到的那句——断言要打在实际渲染的文案上，否则测的是一个不存在的节点。
+  check('说明拿不到画面', consoleText.includes('无画面接口'), consoleText.slice(0, 260));
+  const switchBtn = page.getByRole('button', { name: '切回 QEMU 查看画面' });
+  check('给出「切回 QEMU」的出口', (await switchBtn.count()) > 0);
+  if (await switchBtn.count()) {
+    await switchBtn.first().click();
+    await page.waitForTimeout(1400);
+    const afterSwitch = await calls();
+    // 关键顺序：必须先关机，再切引擎。反过来的话机器会变成孤儿。
+    check('切换前先关了机', afterSwitch.some((c) => c.command === 'vm_stop' && c.payload?.id === 'vm-hcs'));
+    const prefCall = afterSwitch.find((c) => c.command === 'vm_set_engine_preference');
+    check('调用了 vm_set_engine_preference(qemu)', prefCall?.payload?.preference === 'qemu',
+      JSON.stringify(prefCall?.payload));
+    const stopIdx = afterSwitch.findIndex((c) => c.command === 'vm_stop' && c.payload?.id === 'vm-hcs');
+    const prefIdx = afterSwitch.findIndex((c) => c.command === 'vm_set_engine_preference');
+    check('关机发生在切引擎之前', stopIdx >= 0 && prefIdx > stopIdx, `stop=${stopIdx} pref=${prefIdx}`);
   }
 
   await browser.close();

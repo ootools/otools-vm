@@ -159,7 +159,7 @@
   "vm.engine.prefAuto": "默认（QEMU）",
   "vm.engine.prefAutoHint": "有画面，兼容性最好",
   "vm.engine.prefHcs": "HCS（Windows 原生）",
-  "vm.engine.prefSaved": "引擎偏好已保存，重启插件后生效",
+  "vm.engine.prefSaved": "已切换引擎，立即生效",
   "vm.share.protocol9p": "9p · Linux 开箱可用",
   "vm.share.protocolVirtiofs": "virtio-fs · 需 Linux 宿主",
   "vm.share.virtiofsUnsupported": "virtio-fs 需要 Linux 宿主与 virtiofsd，当前宿主不可用，请改用 9p。",
@@ -211,7 +211,7 @@
   "vm.share.smbHint": "由宿主自带文件服务提供，Windows 客户机无需驱动即可访问。",
   "vm.console.mountHintSmb": "客户机里执行：net use Z: \\\\{host}\\{name}（或资源管理器直接打开该路径）",
   "vm.console.noDisplayTitle": "当前后端不提供画面",
-  "vm.console.noDisplayHint": "HCS 引擎没有画面输出接口，虚拟机在后台正常运行但看不到桌面。需要画面请在 QEMU 后端下启动。",
+  "vm.console.noDisplayHint": "HCS 引擎没有画面输出接口：虚拟机在后台正常运行，但看不到桌面。直接切回 QEMU 就能看到画面（会先关机）。",
   "vm.console.noDisplayFoot": "HCS 后端无画面接口：机器仍在运行，可正常关机或暂停",
   "vm.hcs.title": "HCS 引擎",
   "vm.hcs.available": "可用",
@@ -234,5 +234,8 @@
   "vm.hcs.orphanKilled": "遗留的虚拟机已清理",
   "vm.hcs.orphanPartial": "已清理 {done} 台，仍有 {rest} 台关闭失败，请重试或重启系统",
   "vm.settings.liveMemory": "虚拟机正在运行：这里只能调整内存，其它配置请先关机",
-  "vm.settings.liveReadonly": "虚拟机正在运行：当前引擎不支持运行中修改配置，请先关机"
+  "vm.settings.liveReadonly": "虚拟机正在运行：当前引擎不支持运行中修改配置，请先关机",
+  "vm.console.switchToQemu": "切回 QEMU 查看画面",
+  "vm.console.switchToQemuHint": "会先关闭这台虚拟机。QEMU 比 HCS 慢一些，但能看到桌面。",
+  "vm.console.switchedToQemu": "已切回 QEMU，重新启动后即可看到画面"
 }

@@ -197,6 +197,11 @@ const changeEngine = async (preference: EnginePreference): Promise<void> => {
   savingEngine.value = true;
   try {
     settings.value = await VmApi.setEnginePreference(preference);
+    // 引擎已经重建，必须重新拉一次能力集：否则界面还显示旧引擎的 caps，
+    // 用户会以为切换没生效。HCS 与 QEMU 的 displayOutput 正好相反，
+    // 不刷新就会出现「切到了 QEMU 却仍说没有画面」。
+    await vmStore.load();
+    await refreshQemuPlan();
     ElMessage.success(t('vm.engine.prefSaved'));
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error));

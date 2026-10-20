@@ -159,7 +159,7 @@
   "vm.engine.prefAuto": "既定（QEMU）",
   "vm.engine.prefAutoHint": "画面あり、互換性が最も高い",
   "vm.engine.prefHcs": "HCS（Windows ネイティブ）",
-  "vm.engine.prefSaved": "エンジン設定を保存しました。プラグインを再起動すると反映されます",
+  "vm.engine.prefSaved": "エンジンを切り替えました。すぐに反映されます。",
   "vm.share.protocol9p": "9p · Linux でそのまま使える",
   "vm.share.protocolVirtiofs": "virtio-fs · Linux ホストが必要",
   "vm.share.virtiofsUnsupported": "virtio-fs には virtiofsd を持つ Linux ホストが必要です。このホストでは利用できないので 9p を使ってください。",
@@ -211,7 +211,7 @@
   "vm.share.smbHint": "ホストのファイル共有サービスが提供します。Windows ゲストはドライバー不要です。",
   "vm.console.mountHintSmb": "ゲストで実行: net use Z: \\\\{host}\\{name}（エクスプローラーで直接開くことも可）",
   "vm.console.noDisplayTitle": "このバックエンドは画面を提供しません",
-  "vm.console.noDisplayHint": "HCS エンジンには画面出力 API がありません。仮想マシンはバックグラウンドで動作しますが、デスクトップは表示されません。画面が必要な場合は QEMU バックエンドで起動してください。",
+  "vm.console.noDisplayHint": "HCS エンジンには画面出力インターフェースがありません。仮想マシンはバックグラウンドで動作していますが、デスクトップは表示できません。QEMU に切り替えると画面が表示されます（先に電源が切れます）。",
   "vm.console.noDisplayFoot": "HCS に画面 API はありません。マシンは動作中で、停止や一時停止は可能です",
   "vm.hcs.title": "HCS エンジン",
   "vm.hcs.available": "利用可能",
@@ -234,5 +234,8 @@
   "vm.hcs.orphanKilled": "残っていた仮想マシンを整理しました",
   "vm.hcs.orphanPartial": "{done} 台を整理しましたが、{rest} 台を停止できませんでした。再試行するかシステムを再起動してください。",
   "vm.settings.liveMemory": "仮想マシンは実行中です。ここで変更できるのはメモリのみです。その他の設定は電源を切ってから変更してください。",
-  "vm.settings.liveReadonly": "仮想マシンは実行中で、現在のエンジンは実行中の設定変更に対応していません。先に電源を切ってください。"
+  "vm.settings.liveReadonly": "仮想マシンは実行中で、現在のエンジンは実行中の設定変更に対応していません。先に電源を切ってください。",
+  "vm.console.switchToQemu": "QEMU に切り替えて画面を見る",
+  "vm.console.switchToQemuHint": "先にこの仮想マシンの電源を切ります。QEMU は HCS より遅いですが、デスクトップが表示されます。",
+  "vm.console.switchedToQemu": "QEMU に切り替えました。再起動すると画面が表示されます。"
 }
