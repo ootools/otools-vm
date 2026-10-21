@@ -437,6 +437,9 @@ impl Engine for VzEngine {
                 bridged_network: false,
                 // VZ 用 VZVirtualMachineView 把画面搬进插件面板。
                 display_output: true,
+                // VZ 的 3D 由框架自己处理（virtio-gpu scanout），不存在
+                // 「要不要开 egl-headless」这种选择，所以此字段对 VZ 无意义。
+                gl_accel: false,
             },
         }
     }

@@ -134,6 +134,99 @@ fn query_monitor(port: u16, command: &str) -> Option<String> {
     None
 }
 
+/// QEMU 二进制的候选路径，**顺序即优先级**。
+///
+/// **先找随插件分发的副本**，再找系统安装的：用户不该为了用虚拟机先自己装
+/// 一个 QEMU；系统里装了别的版本也不该抢在前面——版本不确定会让参数兼容性
+/// 变成玄学。
+fn binary_candidates(arch: &str) -> Vec<String> {
+    let mut candidates: Vec<String> = Vec::new();
+    for bundled in bundled_candidates() {
+        candidates.push(bundled.to_string_lossy().to_string());
+    }
+    candidates.extend([
+        format!("qemu-system-{}", arch),
+        "/opt/homebrew/bin/qemu-system-aarch64".to_string(),
+        "/usr/local/bin/qemu-system-aarch64".to_string(),
+        "/opt/homebrew/bin/qemu-system-x86_64".to_string(),
+        "/usr/local/bin/qemu-system-x86_64".to_string(),
+        "qemu-system-x86_64".to_string(),
+    ]);
+    // Windows 上 `winget install SoftwareFreedomConservancy.QEMU` 装到 Program
+    // Files，**不会**进 PATH —— 而「一键获取」走的正是这条路。不列在这里，
+    // 刚装完的用户会看到「未找到 QEMU」，等于安装按钮白按。
+    #[cfg(target_os = "windows")]
+    {
+        candidates.push(format!("C:/Program Files/qemu/qemu-system-{}.exe", arch));
+        candidates.push(format!(
+            "C:/Program Files (x86)/qemu/qemu-system-{}.exe",
+            arch
+        ));
+    }
+    candidates
+}
+
+/// 探测宿主端能否用 `-display egl-headless,gl=on` 跑 virtio-gpu 的 GL 加速。
+///
+/// 判据是「**进程能否存活**」，不是「输出里有没有错误」：
+/// - 成功 ⇒ 带 `-S` 的 QEMU 会一直挂着（暂停态），不会自己退出；
+/// - 失败 ⇒ QEMU 启动即报错退出（实测 `-display none` 配 GL 设备 exit code = 1）。
+///
+/// 早期版本靠匹配输出文本，结果把「起了进程但没等它初始化」误判成成功，
+/// 反过来又在 `kill` 太早时拿不到输出而误判成失败。存活判据没有这个歧义。
+///
+/// 结果静态缓存：探测要起进程并等 ~1.2 秒，不该每次查能力都跑一遍。
+pub fn probe_gl_support() -> bool {
+    use std::sync::OnceLock;
+    static CACHED: OnceLock<bool> = OnceLock::new();
+    *CACHED.get_or_init(probe_gl_support_uncached)
+}
+
+fn probe_gl_support_uncached() -> bool {
+    if cfg!(target_os = "macos") {
+        // macOS 走 VZ 时根本不用 QEMU 的画面；即便回落 QEMU，用 cocoa 后端
+        // 也拿不到 GL。这里直接判否，避免起一个无用的子进程。
+        return false;
+    }
+    let arch = if cfg!(target_arch = "aarch64") { "aarch64" } else { "x86_64" };
+    let Some(binary) = binary_candidates(arch).into_iter().find(|candidate| {
+        Command::new(candidate)
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }) else {
+        return false;
+    };
+
+    let Ok(mut child) = Command::new(&binary)
+        .args([
+            "-M",
+            "q35",
+            "-m",
+            "128",
+            "-device",
+            "virtio-vga-gl",
+            "-display",
+            "egl-headless,gl=on",
+            "-S",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+
+    // GL 初始化在 QEMU 早期就完成（失败会立刻退）。给足时间再判定，
+    // 窗口太短会把「还没初始化完」当成成功。
+    std::thread::sleep(std::time::Duration::from_millis(1200));
+    let alive = matches!(child.try_wait(), Ok(None));
+    let _ = child.kill();
+    let _ = child.wait();
+    alive
+}
+
 /// 经 monitor 查询当前实际生效的加速器（HMP info accelerators）。
 /// 只返回能识别的名字；读不到/解析不出返回 None（前端不提示，避免误报）。
 fn detect_active_accel(port: u16) -> Option<String> {
@@ -231,25 +324,7 @@ impl QemuEngine {
     fn detect() -> Option<Self> {
         let arch = if cfg!(target_arch = "aarch64") { "aarch64" } else { "x86_64" };
 
-        // **先找随插件分发的副本**，再找系统安装的。
-        //
-        // 顺序很关键：用户不该为了用虚拟机先自己装一个 QEMU。随插件带的
-        // 那份能直接用（不需要 PATH、不需要管理员），系统里装了别的版本也
-        // 不该抢在前面——版本不确定会让参数兼容性变成玄学。
-        let mut candidates: Vec<String> = Vec::new();
-        for bundled in bundled_candidates() {
-            candidates.push(bundled.to_string_lossy().to_string());
-        }
-        candidates.extend([
-            format!("qemu-system-{}", arch),
-            "/opt/homebrew/bin/qemu-system-aarch64".to_string(),
-            "/usr/local/bin/qemu-system-aarch64".to_string(),
-            "/opt/homebrew/bin/qemu-system-x86_64".to_string(),
-            "/usr/local/bin/qemu-system-x86_64".to_string(),
-            "qemu-system-x86_64".to_string(),
-        ]);
-
-        for candidate in candidates {
+        for candidate in binary_candidates(arch) {
             if let Ok(output) = Command::new(&candidate).arg("--version").output() {
                 if output.status.success() {
                     let text = String::from_utf8_lossy(&output.stdout).to_string();
@@ -654,6 +729,9 @@ impl Engine for QemuEngine {
                 bridged_network: true,
                 // QEMU 自己的窗口能显示画面（只是不能内嵌到插件面板里）。
                 display_output: true,
+                // 宿主端能不能上 virtio-gpu 的 GL。实测确认过 Windows 官方
+                // 11.x 发行版带 virglrenderer，但旧版本不带，所以必须探测而不是写死。
+                gl_accel: probe_gl_support(),
             },
         }
     }

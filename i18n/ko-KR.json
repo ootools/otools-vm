@@ -239,5 +239,9 @@
   "vm.console.switchToQemuHint": "먼저 이 가상 머신의 전원을 끕니다. QEMU는 HCS보다 느리지만 데스크톱을 볼 수 있습니다.",
   "vm.console.switchedToQemu": "QEMU로 전환했습니다. 다시 시작하면 화면이 표시됩니다.",
   "vm.hcs.retiredHint": "현재 사용 중인 HCS 엔진은 지원이 중단되었습니다. 화면 출력, 공유 폴더, 포트 포워딩이 모두 없습니다. Windows의 QEMU도 WHPX로 하드웨어 가속을 받으므로 되돌리는 것을 권장합니다.",
-  "vm.hcs.retiredBack": "기본 엔진으로 되돌리기"
+  "vm.hcs.retiredBack": "기본 엔진으로 되돌리기",
+  "vm.settings.glTitle": "그래픽 가속(호스트 측)",
+  "vm.settings.glSupported": "사용 가능",
+  "vm.settings.glUnsupported": "사용 불가",
+  "vm.settings.glUnsupportedHint": "설치된 QEMU에 virglrenderer가 없어 게스트가 소프트웨어 렌더링으로 동작합니다. 11.x 이상으로 업그레이드하면 사용할 수 있습니다."
 }

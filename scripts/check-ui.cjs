@@ -19,6 +19,7 @@
  * 6b. HCS 不再作为可选引擎出现（它没有画面，而 QEMU 同样有 WHPX 加速）；
  * 7. 选中虚拟机后可收起，并能从工具栏展开；
  * 8. 运行中设置面板只放开内存，其余配置被 inert 锁住；
+ * 8b. GL 能力以只读状态展示，不可用时说明缺 virglrenderer；
  * 9. HCS 无画面时给出一键切回 QEMU 的出口，且**先关机再切引擎**。
  */
 const { chromium } = require('playwright');
@@ -140,6 +141,13 @@ window.otools = {
         return { ok: true };
       case 'vm_rosetta_status':
         return { status: 'notSupported' };
+      case 'vm_gl_support':
+        // 默认「不可用」：绝大多数老版本 QEMU 不带 virglrenderer。
+        // 需要测可用态的用例自己预置 __glSupported。
+        return {
+          supported: window.__glSupported === true,
+          note: 'GL 加速只解决宿主侧的合成与传输。客户机内还需 virgl 驱动：Linux 自带，Windows 需 virtio-win 且支持有限',
+        };
       case 'vm_network_backend':
         return { modes: [], smb: { available: false, reason: '' }, hostAddress: '10.0.2.2' };
       case 'vm_network_interfaces':
@@ -380,7 +388,22 @@ function fakeVm(id, name) {
       node.classList.contains('is-disabled'),
     );
     check('内存滑块仍可用', memDisabled === false);
+    // GL 能力只读展示：界面上要能看到状态，但不给开关（客户机缺驱动时会花屏）
+    const drawerHasGl = drawerText.includes('图形加速');
+    check('展示宿主端图形加速能力', drawerHasGl, drawerText.slice(-260));
   }
+
+  console.log('\n[8b] GL 能力不可用时给出可执行说明');
+  await page.addInitScript(`window.__glSupported = false;`);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  await page.locator('.vm-item').first().click();
+  await page.waitForTimeout(500);
+  await page.locator('.vm-toolbar-actions button').nth(-2).click();
+  await page.waitForTimeout(900);
+  const glText = await page.locator('.el-drawer').innerText();
+  check('标出不可用', glText.includes('不可用'), glText.slice(-300));
+  check('说明原因（缺 virglrenderer）', glText.includes('virglrenderer'), glText.slice(-300));
 
   console.log('\n[9] HCS 无画面 → 一键切回 QEMU');
   // HCS 拿不到画面是这套后端最大的使用障碍。以前界面只解释原因、不给出口，

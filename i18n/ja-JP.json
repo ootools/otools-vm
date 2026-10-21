@@ -239,5 +239,9 @@
   "vm.console.switchToQemuHint": "先にこの仮想マシンの電源を切ります。QEMU は HCS より遅いですが、デスクトップが表示されます。",
   "vm.console.switchedToQemu": "QEMU に切り替えました。再起動すると画面が表示されます。",
   "vm.hcs.retiredHint": "現在は廃止された HCS エンジンを使用しています。画面出力も共有フォルダもポート転送もありません。Windows の QEMU も WHPX でハードウェア加速されるため、戻すことをお勧めします。",
-  "vm.hcs.retiredBack": "既定のエンジンに戻す"
+  "vm.hcs.retiredBack": "既定のエンジンに戻す",
+  "vm.settings.glTitle": "グラフィック高速化（ホスト側）",
+  "vm.settings.glSupported": "利用可能",
+  "vm.settings.glUnsupported": "利用不可",
+  "vm.settings.glUnsupportedHint": "インストールされている QEMU に virglrenderer が含まれていないため、ゲストはソフトウェア描画になります。11.x 以降に更新すると利用できる場合があります。"
 }

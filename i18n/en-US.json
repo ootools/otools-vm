@@ -239,5 +239,9 @@
   "vm.console.switchToQemuHint": "This VM will be powered off first. QEMU is slower than HCS but shows the desktop.",
   "vm.console.switchedToQemu": "Switched to QEMU. Start the VM again to see the display.",
   "vm.hcs.retiredHint": "You are on the retired HCS engine: it has no display output, no shared folders and no port forwarding. On Windows QEMU also gets hardware acceleration through WHPX, so switching back is recommended.",
-  "vm.hcs.retiredBack": "Switch back to the default engine"
+  "vm.hcs.retiredBack": "Switch back to the default engine",
+  "vm.settings.glTitle": "Graphics acceleration (host side)",
+  "vm.settings.glSupported": "Available",
+  "vm.settings.glUnsupported": "Unavailable",
+  "vm.settings.glUnsupportedHint": "The installed QEMU lacks virglrenderer, so guests fall back to software rendering. Upgrading to 11.x or newer may enable it."
 }

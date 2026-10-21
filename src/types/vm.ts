@@ -129,6 +129,19 @@ export interface EngineCaps {
    * 它没有 framebuffer 接口。前端据此隐藏控制台入口并说明原因。
    */
   displayOutput: boolean;
+  /**
+   * 宿主端能否用 `egl-headless,gl=on` 给 virtio-gpu 开 GL 加速。
+   *
+   * **只代表宿主侧**：客户机内还需 virgl 驱动才有 3D（Linux 自带，Windows 需
+   * virtio-win 且支持有限）。所以界面上不能说成「已开启 3D 加速」。
+   */
+  glAccel: boolean;
+}
+
+/** `vm_gl_support` 的返回：宿主 GL 能力探测结果。 */
+export interface GlSupport {
+  supported: boolean;
+  note: string;
 }
 
 /** HCS 引擎的可用性详情（仅 Windows 有意义）。 */

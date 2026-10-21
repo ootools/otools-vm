@@ -499,6 +499,15 @@ pub struct EngineCaps {
     /// 它没有 framebuffer 接口，商业实现都得自带签名内核显示驱动。
     /// 前端据此隐藏「控制台」入口，并在详情里说明，而不是让用户对着黑屏猜。
     pub display_output: bool,
+    /// 宿主端是否能用 `-display egl-headless,gl=on` 跑 virtio-gpu 的 GL 加速。
+    ///
+    /// 这是**宿主侧**的能力：真正吃到 3D 还要客户机内装 virgl 驱动
+    /// （Linux 自带；Windows 得靠 virtio-win，且支持有限）。
+    /// 所以前端不能据此承诺「一定有 3D」，只能说明「可以尝试 / 已启用」。
+    ///
+    /// 探测代价是起一个几百毫秒的空 QEMU，结果在 native 侧缓存。
+    #[serde(default)]
+    pub gl_accel: bool,
 }
 
 impl EngineCaps {
@@ -516,6 +525,7 @@ impl EngineCaps {
             rosetta: false,
             bridged_network: false,
             display_output: false,
+            gl_accel: false,
         }
     }
 }

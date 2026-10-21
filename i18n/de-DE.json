@@ -239,5 +239,9 @@
   "vm.console.switchToQemuHint": "Diese VM wird zuerst ausgeschaltet. QEMU ist langsamer als HCS, zeigt aber den Desktop.",
   "vm.console.switchedToQemu": "Zu QEMU gewechselt. Nach dem erneuten Start ist die Anzeige verfügbar.",
   "vm.hcs.retiredHint": "Sie verwenden die eingestellte HCS-Engine: keine Bildausgabe, keine freigegebenen Ordner, keine Portweiterleitung. QEMU erhält unter Windows ebenfalls Hardwarebeschleunigung über WHPX – ein Wechsel zurück wird empfohlen.",
-  "vm.hcs.retiredBack": "Zurück zur Standard-Engine"
+  "vm.hcs.retiredBack": "Zurück zur Standard-Engine",
+  "vm.settings.glTitle": "Grafikbeschleunigung (Hostseite)",
+  "vm.settings.glSupported": "Verfügbar",
+  "vm.settings.glUnsupported": "Nicht verfügbar",
+  "vm.settings.glUnsupportedHint": "Das installierte QEMU enthält kein virglrenderer, Gäste rendern per Software. Ein Upgrade auf 11.x oder neuer kann dies ermöglichen."
 }

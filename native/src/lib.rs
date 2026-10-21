@@ -748,6 +748,19 @@ fn cmd_hcs_orphans_kill(payload: &Value) -> Result<Value, String> {
     }
 }
 
+/// 宿主端能否用 `egl-headless,gl=on` 给 virtio-gpu 开 GL 加速。
+///
+/// 单列一个命令而不是塞进 `vm_workspace`：探测要起一个空 QEMU 进程（几百毫秒），
+/// 不该让每次列表刷新都付这个代价。前端只在打开虚拟机设置时问一次。
+fn cmd_gl_support() -> Result<Value, String> {
+    Ok(json!({
+        "supported": engine::qemu::probe_gl_support(),
+        // 能不能开是一件事，开了有没有效果是另一件——客户机必须装 virgl 驱动。
+        "note": "GL 加速只解决宿主侧的合成与传输。客户机内还需 virgl 驱动：\
+                 Linux 自带，Windows 需 virtio-win 且支持有限",
+    }))
+}
+
 fn cmd_network_backend(payload: &Value) -> Result<Value, String> {
     let mut items = Vec::new();
     for mode in [
@@ -986,6 +999,7 @@ fn dispatch(method: &str, payload: Value) -> Result<Value, String> {
         "vm_hcs_status" => cmd_hcs_status(),
         "vm_hcs_orphans" => cmd_hcs_orphans(),
         "vm_hcs_orphans_kill" => cmd_hcs_orphans_kill(&payload),
+        "vm_gl_support" => cmd_gl_support(),
         "vm_get_settings" => cmd_get_settings(),
         "vm_set_engine_preference" => cmd_set_engine_preference(&payload),
         "vm_rosetta_status" => cmd_rosetta_status(),

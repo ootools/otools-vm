@@ -239,5 +239,9 @@
   "vm.console.switchToQemuHint": "Esta máquina se apagará primero. QEMU es más lento que HCS pero muestra el escritorio.",
   "vm.console.switchedToQemu": "Cambiado a QEMU. Inicie la máquina de nuevo para ver la pantalla.",
   "vm.hcs.retiredHint": "Está usando el motor HCS retirado: no tiene salida de vídeo, ni carpetas compartidas, ni reenvío de puertos. En Windows QEMU también obtiene aceleración por hardware vía WHPX, así que se recomienda volver.",
-  "vm.hcs.retiredBack": "Volver al motor predeterminado"
+  "vm.hcs.retiredBack": "Volver al motor predeterminado",
+  "vm.settings.glTitle": "Aceleración gráfica (lado anfitrión)",
+  "vm.settings.glSupported": "Disponible",
+  "vm.settings.glUnsupported": "No disponible",
+  "vm.settings.glUnsupportedHint": "El QEMU instalado no incluye virglrenderer, así que los invitados usan renderizado por software. Actualizar a 11.x o superior puede habilitarlo."
 }

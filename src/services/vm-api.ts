@@ -3,6 +3,7 @@ import type {
   DiskSpace,
   EngineInfo,
   EnginePreference,
+  GlSupport,
   HcsOrphanKillResult,
   HcsOrphans,
   HcsStatus,
@@ -68,6 +69,14 @@ export const VmApi = {
     invokeNative<HcsOrphanKillResult>('vm_hcs_orphans_kill', { ids }),
 
   getSettings: () => invokeNative<VmSettings>('vm_get_settings'),
+
+  /**
+   * 宿主端能否给 virtio-gpu 开 GL 加速。
+   *
+   * native 侧要起一个空 QEMU 等 ~1.2 秒才判定，**结果会被缓存**，但首次调用
+   * 依然明显慢于普通命令——只在打开虚拟机设置时问一次，别放进列表刷新里。
+   */
+  getGlSupport: () => invokeNative<GlSupport>('vm_gl_support'),
 
   /**
    * 切换引擎偏好，**立即生效**（native 侧会重建引擎）。

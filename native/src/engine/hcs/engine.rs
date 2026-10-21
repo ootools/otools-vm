@@ -129,6 +129,8 @@ impl Engine for HcsEngine {
                 // HCS 没有公开的取图入口，画面拿不到——本后端最大的能力缺口。
                 native_view: false,
                 display_output: false,
+                // 连画面都没有，更谈不上 GL 加速。
+                gl_accel: false,
                 shared_dirs: false,
                 shared_dirs_guests: Vec::new(),
                 clipboard: false,

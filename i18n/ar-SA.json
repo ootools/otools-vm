@@ -239,5 +239,9 @@
   "vm.console.switchToQemuHint": "سيتم إيقاف تشغيل هذا الجهاز أولاً. QEMU أبطأ من HCS لكنه يعرض سطح المكتب.",
   "vm.console.switchedToQemu": "تم التبديل إلى QEMU. شغّل الجهاز مرة أخرى لرؤية الشاشة.",
   "vm.hcs.retiredHint": "أنت تستخدم محرك HCS المتوقف: لا يوجد إخراج للصورة ولا مجلدات مشتركة ولا إعادة توجيه منافذ. يعمل QEMU في Windows أيضًا بتسريع عتادي عبر WHPX، لذا يُنصح بالرجوع.",
-  "vm.hcs.retiredBack": "العودة إلى المحرك الافتراضي"
+  "vm.hcs.retiredBack": "العودة إلى المحرك الافتراضي",
+  "vm.settings.glTitle": "تسريع الرسومات (جانب المضيف)",
+  "vm.settings.glSupported": "متاح",
+  "vm.settings.glUnsupported": "غير متاح",
+  "vm.settings.glUnsupportedHint": "لا يتضمن QEMU المثبت مكتبة virglrenderer، لذا تستخدم الأجهزة الضيفة العرض البرمجي. قد يتيح الترقية إلى 11.x أو أحدث ذلك."
 }

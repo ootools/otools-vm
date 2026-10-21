@@ -1,10 +1,18 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
 import { openHostPath } from '@/sdk/runtime';
+import { VmApi } from '@/services/vm-api';
 import { vmStore } from '@/state/vm-store';
-import type { NetworkMode, PortForward, SharedDir, VmSummary, VmUpdateInput } from '@/types/vm';
+import type {
+  GlSupport,
+  NetworkMode,
+  PortForward,
+  SharedDir,
+  VmSummary,
+  VmUpdateInput,
+} from '@/types/vm';
 import SharedDirEditor from './SharedDirEditor.vue';
 import VmDeviceManager, { type DeviceConfig } from './VmDeviceManager.vue';
 import VmNetworkManager, { type NetworkConfig } from './VmNetworkManager.vue';
@@ -75,6 +83,26 @@ const live = computed(() => {
 const liveMemory = computed(
   () => live.value && vmStore.state.engine?.kind === 'hcs',
 );
+
+/**
+ * 宿主端 GL 能力。只在打开面板时问一次（native 侧首次要 ~1.2 秒）。
+ *
+ * 这里**只展示状态、不开开关**：GL 真正生效还要客户机装 virgl 驱动
+ * （Linux 自带，Windows 需 virtio-win 且支持有限），贸然给一个开关会让
+ * Windows 用户以为「打开就能 3D」，然后花屏或黑屏。
+ */
+const glSupport = ref<GlSupport | null>(null);
+watch(visible, async (open) => {
+  if (!open || glSupport.value) {
+    return;
+  }
+  try {
+    glSupport.value = await VmApi.getGlSupport();
+  } catch {
+    // 探测失败不该打断设置面板：按不可用处理即可。
+    glSupport.value = { supported: false, note: '' };
+  }
+});
 
 watch(
   () => [visible.value, props.vm?.id],
@@ -270,6 +298,20 @@ const revealDisk = (): void => {
             size="small"
             :disabled="live && !liveMemory"
           />
+        </div>
+
+        <!--
+          GL 能力只读展示，不给开关。
+          原因：GL 只解决宿主侧合成与传输，客户机还得装 virgl 驱动才有 3D
+          （Linux 自带；Windows 需 virtio-win 且支持有限）。现在给一个「开启
+          3D 加速」的开关，等于诱导 Windows 用户去撞花屏。
+        -->
+        <div v-if="glSupport" class="vm-settings-field">
+          <label>{{ t('vm.settings.glTitle') }}</label>
+          <el-tag :type="glSupport.supported ? 'success' : 'info'" size="small" effect="plain">
+            {{ glSupport.supported ? t('vm.settings.glSupported') : t('vm.settings.glUnsupported') }}
+          </el-tag>
+          <p class="vm-settings-hint">{{ glSupport.supported ? glSupport.note : t('vm.settings.glUnsupportedHint') }}</p>
         </div>
       </section>
 
