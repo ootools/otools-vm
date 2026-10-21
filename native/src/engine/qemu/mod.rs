@@ -14,6 +14,10 @@ pub mod network;
 pub mod smb;
 pub mod virtiofs;
 
+/// Windows 上把 QEMU 的显示窗口嵌进宿主面板（窗口重定父）。
+#[cfg(target_os = "windows")]
+pub mod embed;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -375,6 +379,14 @@ impl QemuEngine {
         Err("已选择 UEFI 但未找到 OVMF 固件，请在虚拟机设置里指定固件文件路径".to_string())
     }
 
+    /// QEMU 的 `-display` 参数。
+    ///
+    /// Windows 用 `sdl`：它会建一个真正的顶层窗口，我们靠 `SetParent` 把它
+    /// 嵌进面板（见 `embed` 模块）。**不能用 `egl-headless`** —— 那个后端
+    /// 根本不创建窗口，没有 HWND 可挂，也就无从内嵌。
+    ///
+    /// 代价是「GL」与「内嵌」在 Windows 上暂时二选一：`sdl,gl=on` 虽然能跑
+    /// （实测通过），但 GL 与重定父同时生效需要额外验证，先不叠加。
     fn display_arg() -> &'static str {
         if cfg!(target_os = "macos") {
             "cocoa"
@@ -711,7 +723,9 @@ impl Engine for QemuEngine {
             host_entitled: true,
             accelerator: self.active_accel.lock().ok().and_then(|guard| guard.clone()),
             caps: EngineCaps {
-                native_view: false,
+                // Windows 上靠窗口重定父把 QEMU 的 SDL 窗口嵌进面板（见 embed）。
+                // 其它平台仍走 QEMU 自己的窗口，前端会据此退回非内嵌形态。
+                native_view: cfg!(target_os = "windows"),
                 shared_dirs: true,
                 // 9p 覆盖 Linux；virtio-fs 覆盖 Windows（需 virtio-win 的 viofs 驱动）。
                 shared_dirs_guests: vec!["linux".to_string(), "windows".to_string()],
@@ -838,6 +852,19 @@ impl Engine for QemuEngine {
                 return Err(format!("启动 QEMU 失败: {}", error));
             }
         };
+
+        // Windows：QEMU 一启动就会把显示窗口弹到屏幕中央，而我们要等前端
+        // 上报矩形才能把它嵌进面板。中间这段空窗期用户会看到一个窗口闪出来、
+        // 又被吸进面板。这里抢先把窗口藏起来，等 attach 时再显示。
+        //
+        // 用后台线程而不是阻塞启动流程：等窗口出现最多要几秒，卡住 start
+        // 会让「点启动」这段时间界面无响应。
+        #[cfg(target_os = "windows")]
+        {
+            let pid = child.id();
+            std::thread::spawn(move || embed::hide_until_attached(pid));
+        }
+
         with_children(|children| {
             children.insert(
                 spec.id.clone(),
@@ -912,15 +939,40 @@ impl Engine for QemuEngine {
             .unwrap_or_default()
     }
 
-    fn attach_view(&self, _spec: &VmSpec, _rect: ViewRect) -> Result<(), String> {
-        Err("QEMU 后端的画面在 QEMU 自己的窗口里，不支持内嵌".to_string())
+    fn attach_view(&self, spec: &VmSpec, rect: ViewRect) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
+        {
+            // 取出该机器的子进程，反查它的显示窗口并挂到宿主面板下。
+            // 用 `with_children` 而不是再存一份 Child：进程的唯一持有者
+            // 必须是 CHILDREN，否则 stop 时会出现两个地方都以为自己能收它。
+            let pid_child = with_children(|map| {
+                map.get(&spec.id).map(|managed| managed.child.id())
+            });
+            let Some(pid) = pid_child else {
+                return Err("虚拟机未在运行，无法挂载画面".to_string());
+            };
+            return embed::attach_by_pid(pid, rect);
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (spec, rect);
+            Err("QEMU 后端的画面在 QEMU 自己的窗口里，不支持内嵌".to_string())
+        }
     }
 
-    fn update_view_rect(&self, _spec: &VmSpec, _rect: ViewRect) -> Result<(), String> {
+    fn update_view_rect(&self, _spec: &VmSpec, rect: ViewRect) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
+        {
+            embed::update_rect(rect);
+        }
         Ok(())
     }
 
     fn detach_view(&self, _spec: &VmSpec) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
+        {
+            embed::detach();
+        }
         Ok(())
     }
 

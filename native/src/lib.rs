@@ -403,7 +403,43 @@ fn cmd_start(payload: &Value) -> Result<Value, String> {
         ));
     }
     engine.start(&spec)?;
+
+    // 启动成功后立刻尝试内嵌画面。
+    //
+    // **必须在这里做，不能等前端轮询到 running 再 attach**：QEMU 的显示窗口
+    // 是启动时就创建的，晚一步挂接就会先看到它独立弹在屏幕中央再被吸进面板，
+    // 视觉上很突兀。带上 rect 参数可以让第一次定位就落在正确的矩形上。
+    //
+    // 失败**不返回错误**：内嵌只是体验优化，机器已经起来了。把 attach 的
+    // 失败升格成启动失败，会让用户以为虚拟机没启动成功。
+    if let Some(rect) = read_optional_rect(payload) {
+        if let Err(error) = engine.attach_view(&spec, rect) {
+            eprintln!("[vm] 启动后内嵌画面失败（不影响运行）: {}", error);
+        }
+    }
+
     Ok(json!({ "ok": true }))
+}
+
+/// 从入参里读出可选的视图矩形。缺字段或数值非法时返回 None——
+/// 这是「尽量内嵌」，不构成必须条件。
+fn read_optional_rect(payload: &Value) -> Option<engine::ViewRect> {
+    let rect = payload.get("rect")?;
+    let get = |key: &str| rect.get(key).and_then(|value| value.as_f64());
+    let parsed = engine::ViewRect {
+        x: get("x")?,
+        y: get("y")?,
+        width: get("width")?,
+        height: get("height")?,
+        scale: get("scale").unwrap_or(1.0),
+        viewport_width: get("viewportWidth").unwrap_or(0.0),
+        viewport_height: get("viewportHeight").unwrap_or(0.0),
+    };
+    if parsed.is_valid() {
+        Some(parsed)
+    } else {
+        None
+    }
 }
 
 fn cmd_stop(payload: &Value) -> Result<Value, String> {

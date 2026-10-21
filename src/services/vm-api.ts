@@ -108,7 +108,14 @@ export const VmApi = {
   getDiskSpace: (path?: string) =>
     invokeNative<DiskSpace>('vm_disk_space', path ? { path } : {}),
 
-  start: (id: string) => invokeNative<{ ok: boolean }>('vm_start', { id }),
+  /**
+   * 启动虚拟机。
+   *
+   * `rect` 可选：带上它，native 会在启动后立刻把显示窗口嵌进面板的那块矩形。
+   * 不带的话窗口会先独立弹出、等 attach 时才被吸进来，视觉上很跳。
+   */
+  start: (id: string, rect?: ViewRect) =>
+    invokeNative<{ ok: boolean }>('vm_start', rect ? { id, rect } : { id }),
   stop: (id: string) => invokeNative<{ ok: boolean }>('vm_stop', { id }),
   pause: (id: string) => invokeNative<{ ok: boolean }>('vm_pause', { id }),
   resume: (id: string) => invokeNative<{ ok: boolean }>('vm_resume', { id }),

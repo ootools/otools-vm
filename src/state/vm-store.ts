@@ -6,6 +6,7 @@ import type {
   HostInfo,
   RosettaStatus,
   SnapshotSupport,
+  ViewRect,
   VmCreateInput,
   VmSummary,
   VmUpdateInput,
@@ -135,7 +136,7 @@ async function run(action: () => Promise<unknown>): Promise<boolean> {
   }
 }
 
-const start = (id: string) => run(() => VmApi.start(id));
+const start = (id: string, rect?: ViewRect) => run(() => VmApi.start(id, rect));
 const stop = (id: string) => run(() => VmApi.stop(id));
 const pause = (id: string) => run(() => VmApi.pause(id));
 const resume = (id: string) => run(() => VmApi.resume(id));
