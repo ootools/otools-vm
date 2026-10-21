@@ -19,7 +19,6 @@
 //! 驱动时一次性完成，要么由宿主以管理员身份重跑。做不到就给出可操作提示，
 //! 而不是让 QEMU 抛一句难懂的原始错误。
 
-use std::process::Command;
 
 use crate::model::{NetworkMode, VmSpec};
 
@@ -90,7 +89,7 @@ fn list_interfaces_windows() -> Vec<HostInterface> {
         ),
         temp_literal
     );
-    let ran = Command::new("powershell")
+    let ran = crate::process::command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .output()
         .map(|output| output.status.success())
@@ -169,7 +168,7 @@ fn list_interfaces_windows() -> Vec<HostInterface> {
 /// 再按接口名查 IPv4。vmnet-bridged 要的就是 `en0` 这种接口名。
 #[cfg(target_os = "macos")]
 fn list_interfaces_macos() -> Vec<HostInterface> {
-    let output = match Command::new("networksetup")
+    let output = match crate::process::command("networksetup")
         .args(["-listallhardwareports"])
         .output()
     {
@@ -218,7 +217,7 @@ fn list_interfaces_macos() -> Vec<HostInterface> {
 /// 过滤回环与虚拟网桥，留下能桥接的物理网卡。
 #[cfg(all(unix, not(target_os = "macos")))]
 fn list_interfaces_linux() -> Vec<HostInterface> {
-    let output = match Command::new("ip")
+    let output = match crate::process::command("ip")
         .args(["-o", "-4", "addr", "show"])
         .output()
     {
@@ -282,7 +281,7 @@ fn linux_wireless_names() -> Vec<String> {
 /// 查某个接口的 IPv4 地址（macOS 走 `ipconfig getifaddr`）。
 #[cfg(target_os = "macos")]
 fn ipv4_for_interface(device: &str) -> Option<String> {
-    let output = Command::new("ipconfig").args(["getifaddr", device]).output().ok()?;
+    let output = crate::process::command("ipconfig").args(["getifaddr", device]).output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -350,7 +349,7 @@ pub fn check_backend(mode: NetworkMode) -> Result<(), String> {
 /// macOS 上没有 libc 依赖，用 `id -u` 判断是否 root（够用）。
 #[cfg(target_os = "macos")]
 unsafe fn libc_geteuid_is_root() -> bool {
-    Command::new("id")
+    crate::process::command("id")
         .arg("-u")
         .output()
         .ok()
@@ -373,7 +372,7 @@ fn has_windows_tap_driver() -> bool {
         "Where-Object { $_.InterfaceDescription -match 'TAP-Windows|tap-windows|OpenVPN' }; ",
         "if ($nics) { 'YES' } else { 'NO' }"
     );
-    if let Ok(output) = Command::new("powershell")
+    if let Ok(output) = crate::process::command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .output()
     {
@@ -392,7 +391,7 @@ fn has_windows_tap_driver() -> bool {
         "Where-Object { $_.GetValue('DriverDesc') -match 'TAP-Windows|OpenVPN' }; ",
         "if ($hits) { 'YES' } else { 'NO' }"
     );
-    match Command::new("powershell")
+    match crate::process::command("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .output()
     {

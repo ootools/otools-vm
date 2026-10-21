@@ -19,7 +19,7 @@
 //!   或装好 VirtIO-FS Service 后自动出现 Z: 盘。
 
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::model::{SharedDir, VmSpec};
@@ -131,7 +131,7 @@ pub fn start(spec: &VmSpec, dir: &SharedDir, daemon: &PathBuf) -> Result<Daemon,
     // 上次异常退出可能留下 socket 文件，而 virtiofsd 不会覆盖已存在的路径。
     let _ = std::fs::remove_file(&socket);
 
-    let mut command = Command::new(daemon);
+    let mut command = crate::process::command(daemon);
     command
         .arg("--socket-path")
         .arg(&socket)

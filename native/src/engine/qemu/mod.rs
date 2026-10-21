@@ -20,7 +20,7 @@ pub mod embed;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::Mutex;
 
 use super::{Engine, ViewRect};
@@ -194,7 +194,7 @@ fn probe_gl_support_uncached() -> bool {
     }
     let arch = if cfg!(target_arch = "aarch64") { "aarch64" } else { "x86_64" };
     let Some(binary) = binary_candidates(arch).into_iter().find(|candidate| {
-        Command::new(candidate)
+        crate::process::command(candidate)
             .arg("--version")
             .output()
             .map(|output| output.status.success())
@@ -203,7 +203,7 @@ fn probe_gl_support_uncached() -> bool {
         return false;
     };
 
-    let Ok(mut child) = Command::new(&binary)
+    let Ok(mut child) = crate::process::command(&binary)
         .args([
             "-M",
             "q35",
@@ -329,7 +329,7 @@ impl QemuEngine {
         let arch = if cfg!(target_arch = "aarch64") { "aarch64" } else { "x86_64" };
 
         for candidate in binary_candidates(arch) {
-            if let Ok(output) = Command::new(&candidate).arg("--version").output() {
+            if let Ok(output) = crate::process::command(&candidate).arg("--version").output() {
                 if output.status.success() {
                     let text = String::from_utf8_lossy(&output.stdout).to_string();
                     let version = text
@@ -683,7 +683,7 @@ fn resolve_binary(candidate: &str) -> PathBuf {
     if candidate.contains('/') {
         return PathBuf::from(candidate);
     }
-    if let Ok(output) = Command::new("sh")
+    if let Ok(output) = crate::process::command("sh")
         .arg("-c")
         .arg(format!("command -v {}", candidate))
         .output()
@@ -828,7 +828,7 @@ impl Engine for QemuEngine {
         }
         let log = std::fs::File::create(&log_path).ok();
 
-        let mut command = Command::new(&self.binary);
+        let mut command = crate::process::command(&self.binary);
         command.args(&args).stdin(Stdio::null());
         if let Some(file) = log {
             let cloned = file.try_clone().ok();

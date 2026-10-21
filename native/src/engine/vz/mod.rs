@@ -397,7 +397,7 @@ fn probe_host_entitlement() -> bool {
 }
 
 fn macos_version() -> String {
-    std::process::Command::new("sw_vers")
+    crate::process::command("sw_vers")
         .arg("-productVersion")
         .output()
         .ok()

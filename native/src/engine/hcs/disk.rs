@@ -16,7 +16,6 @@
 //! 手写风险远高于调用系统组件。
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// 小于这个体积就认为盘里没有系统——空 RAW 稀疏文件通常只有几 MB。
 const EMPTY_DISK_THRESHOLD_BYTES: u64 = 32 * 1024 * 1024;
@@ -102,7 +101,7 @@ pub fn expand_vhdx(path: &Path, size_gb: u64) -> Result<(), String> {
         size_mb
     );
 
-    let mut child = Command::new("diskpart")
+    let mut child = crate::process::command("diskpart")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -164,7 +163,7 @@ fn create_blank_vhdx(path: &Path, size_gb: u64) -> Result<(), String> {
     );
 
     // diskpart 从 stdin 读脚本；用管道比临时文件干净，也不留痕。
-    let mut child = Command::new("diskpart")
+    let mut child = crate::process::command("diskpart")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -196,7 +195,7 @@ fn create_blank_vhdx(path: &Path, size_gb: u64) -> Result<(), String> {
 /// 调 qemu-img 转换格式。
 fn convert_with_qemu_img(source: &Path, target: &Path, format: &str) -> Result<(), String> {
     let binary = find_qemu_img().ok_or_else(|| "未找到 qemu-img".to_string())?;
-    let output = Command::new(binary)
+    let output = crate::process::command(binary)
         .arg("convert")
         .arg("-O")
         .arg(format)
@@ -219,7 +218,7 @@ fn find_qemu_img() -> Option<String> {
         "/usr/local/bin/qemu-img",
         "/usr/bin/qemu-img",
     ] {
-        if Command::new(candidate)
+        if crate::process::command(candidate)
             .arg("--version")
             .output()
             .map(|output| output.status.success())

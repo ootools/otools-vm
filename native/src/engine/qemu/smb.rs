@@ -114,7 +114,7 @@ pub fn check_capability() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         // macOS 的 `sharing` 命令需要先开启「文件共享」服务。
-        let output = Command::new("launchctl")
+        let output = crate::process::command("launchctl")
             .args(["print", "system/com.apple.smbd"])
             .output();
         match output {
@@ -138,7 +138,7 @@ pub fn check_capability() -> Result<(), String> {
 /// 它比 `whoami /groups` 解析更稳（不受系统语言影响）。
 #[cfg(target_os = "windows")]
 fn is_elevated() -> bool {
-    Command::new("net")
+    crate::process::command("net")
         .arg("session")
         .output()
         .map(|output| output.status.success())
@@ -147,7 +147,7 @@ fn is_elevated() -> bool {
 
 #[cfg(target_os = "linux")]
 fn which(binary: &str) -> Option<String> {
-    let output = Command::new("sh")
+    let output = crate::process::command("sh")
         .arg("-c")
         .arg(format!("command -v {}", binary))
         .output()
@@ -205,7 +205,7 @@ pub fn remove_share(name: &str) -> Result<(), String> {
     }
     #[cfg(target_os = "linux")]
     {
-        let output = Command::new("net")
+        let output = crate::process::command("net")
             .args(["usershare", "delete", name])
             .output()
             .map_err(|error| format!("调用 net usershare 失败: {}", error))?;
@@ -241,7 +241,7 @@ pub fn is_shared(name: &str) -> bool {
     }
     #[cfg(target_os = "linux")]
     {
-        Command::new("net")
+        crate::process::command("net")
             .args(["usershare", "info", name])
             .output()
             .map(|output| output.status.success())
@@ -291,7 +291,7 @@ fn create_share_readonly(name: &str, path: &str) -> Result<(), String> {
 
 #[cfg(target_os = "linux")]
 fn create_share_readwrite(name: &str, path: &str) -> Result<(), String> {
-    let output = Command::new("net")
+    let output = crate::process::command("net")
         .args([
             "usershare",
             "add",
@@ -311,7 +311,7 @@ fn create_share_readwrite(name: &str, path: &str) -> Result<(), String> {
 
 #[cfg(target_os = "linux")]
 fn create_share_readonly(name: &str, path: &str) -> Result<(), String> {
-    let output = Command::new("net")
+    let output = crate::process::command("net")
         .args([
             "usershare",
             "add",
@@ -419,7 +419,7 @@ fn decode_console(bytes: &[u8]) -> String {
 /// 解析中文内容，只依赖退出码。
 #[cfg(target_os = "windows")]
 fn net_command(args: &[&str]) -> Command {
-    let mut command = Command::new("cmd");
+    let mut command = crate::process::command("cmd");
     let mut shell = String::from("chcp 65001 >nul && net");
     for arg in args {
         shell.push(' ');

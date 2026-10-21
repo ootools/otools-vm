@@ -134,7 +134,7 @@ fn clone_file(source: &std::path::Path, target: &std::path::Path) -> Result<(), 
     }
     #[cfg(target_os = "macos")]
     {
-        let status = std::process::Command::new("cp")
+        let status = crate::process::command("cp")
             .arg("-c")
             .arg(source)
             .arg(target)

@@ -169,7 +169,7 @@ pub fn available_bytes(path: &std::path::Path) -> Option<u64> {
                 .find(|candidate| candidate.exists())
                 .map(|candidate| candidate.to_path_buf())?
         };
-        let output = std::process::Command::new("df")
+        let output = crate::process::command("df")
             .arg("-k")
             .arg(&probe)
             .output()

@@ -294,7 +294,7 @@ fn install_with_winget() -> Result<PathBuf, String> {
         return Ok(found);
     }
 
-    let mut command = std::process::Command::new("winget");
+    let mut command = crate::process::command("winget");
     command.args([
         "install",
         "--id",
@@ -305,7 +305,7 @@ fn install_with_winget() -> Result<PathBuf, String> {
         "--accept-source-agreements",
         "--disable-interactivity",
     ]);
-    hide_console(&mut command);
+    crate::process::suppress_console(&mut command);
     let output = command
         .output()
         .map_err(|error| format!("无法启动 winget: {}", error))?;
@@ -371,9 +371,9 @@ fn install_with_installer() -> Result<PathBuf, String> {
     fetch(&url, &archive)?;
 
     set_status(|status| status.phase = "installing".to_string());
-    let mut command = std::process::Command::new(&archive);
+    let mut command = crate::process::command(&archive);
     command.arg("/S").arg(format!("/D={}", root.display()));
-    hide_console(&mut command);
+    crate::process::suppress_console(&mut command);
     let status = command
         .status()
         .map_err(|error| format!("无法启动安装程序: {}", error))?;
@@ -401,7 +401,7 @@ fn install_with_installer() -> Result<PathBuf, String> {
 }
 
 fn install_with_brew() -> Result<PathBuf, String> {
-    let status = std::process::Command::new("brew")
+    let status = crate::process::command("brew")
         .args(["install", "qemu"])
         .status()
         .map_err(|error| format!("无法启动 Homebrew: {}", error))?;
@@ -436,7 +436,7 @@ fn find_installed_binary() -> Option<PathBuf> {
         }
     }
     // PATH 里可能有（比如 winget 把 Links 目录塞进了 PATH）。
-    if let Ok(output) = std::process::Command::new(&name).arg("--version").output() {
+    if let Ok(output) = crate::process::command(&name).arg("--version").output() {
         if output.status.success() {
             return Some(PathBuf::from(&name));
         }
@@ -448,7 +448,7 @@ fn find_installed_binary() -> Option<PathBuf> {
 ///
 /// 拿不到版本号通常意味着缺 DLL：早报比等到启动虚拟机再报好。
 fn verify_runs(binary: &Path) -> Result<(), String> {
-    std::process::Command::new(binary)
+    crate::process::command(binary)
         .arg("--version")
         .output()
         .ok()
@@ -471,7 +471,7 @@ fn verify_runs(binary: &Path) -> Result<(), String> {
 fn fetch(url: &str, target: &Path) -> Result<(), String> {
     let _ = std::fs::remove_file(target);
 
-    let mut command = std::process::Command::new("curl");
+    let mut command = crate::process::command("curl");
     command
         .args([
             "--location",
@@ -482,7 +482,7 @@ fn fetch(url: &str, target: &Path) -> Result<(), String> {
         ])
         .arg(target)
         .arg(url);
-    hide_console(&mut command);
+    crate::process::suppress_console(&mut command);
     let mut child = command
         .spawn()
         .map_err(|error| format!("无法启动 curl: {}", error))?;
@@ -552,9 +552,9 @@ fn find_binary(root: &Path) -> Option<PathBuf> {
 }
 
 fn command_ok(program: &str, args: &[&str]) -> bool {
-    let mut command = std::process::Command::new(program);
+    let mut command = crate::process::command(program);
     command.args(args);
-    hide_console(&mut command);
+    crate::process::suppress_console(&mut command);
     command
         .output()
         .map(|output| output.status.success())
@@ -567,20 +567,6 @@ fn winget_available() -> bool {
     }
     command_ok("winget", &["--version"])
 }
-
-/// 不弹黑色控制台窗口。
-///
-/// 插件跑在 GUI 进程里，随手 spawn 一个命令行工具会在用户屏幕上闪一个黑框——
-/// 装 QEMU 要跑几分钟，那个黑框会一直在。
-#[cfg(target_os = "windows")]
-fn hide_console(command: &mut std::process::Command) {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    command.creation_flags(CREATE_NO_WINDOW);
-}
-
-#[cfg(not(target_os = "windows"))]
-fn hide_console(_command: &mut std::process::Command) {}
 
 #[cfg(test)]
 mod tests {

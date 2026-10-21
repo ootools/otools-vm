@@ -15,7 +15,6 @@ pub mod network;
 
 pub use engine::HcsEngine;
 
-use std::process::Command;
 
 /// 探测结果。`available` 为 false 时 `reason` 一定有内容。
 #[derive(Debug, Clone)]
@@ -62,7 +61,7 @@ pub fn probe() -> Availability {
 /// `net session` 能成功即说明有管理员权限：它需要访问 SMB 服务端管理接口，
 /// 比解析 `whoami /groups` 稳（后者输出受本地化影响）。
 pub fn is_elevated() -> bool {
-    Command::new("net")
+    crate::process::command("net")
         .args(["session"])
         .output()
         .map(|output| output.status.success())
@@ -79,7 +78,7 @@ pub fn is_elevated() -> bool {
 /// 也不受系统语言影响。
 pub fn in_hyperv_admins() -> bool {
     const HYPERV_ADMINS_SID: &str = "S-1-5-32-578";
-    let Ok(output) = Command::new("whoami").args(["/groups"]).output() else {
+    let Ok(output) = crate::process::command("whoami").args(["/groups"]).output() else {
         return false;
     };
     String::from_utf8_lossy(&output.stdout)
@@ -93,7 +92,7 @@ pub fn in_hyperv_admins() -> bool {
 /// 会得到「[�汾 10.0.26100]」这种乱码（本机实测）。改问 PowerShell 取数字，
 /// 全是 ASCII，不受代码页影响。
 fn system_version() -> String {
-    let output = Command::new("powershell")
+    let output = crate::process::command("powershell")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -392,7 +391,7 @@ mod probe_tests {
             "成员判断必须走固定 SID，否则会受组名/本地化影响"
         );
         assert!(
-            !body.contains("Command::new(\"net\")"),
+            !body.contains("crate::process::command(\"net\")"),
             "不应再用 net 命令判断组成员身份"
         );
     }

@@ -11,6 +11,7 @@
 pub mod engine;
 pub mod model;
 pub mod paths;
+pub mod process;
 pub mod settings;
 pub mod store;
 
@@ -983,7 +984,7 @@ fn host_info() -> HostInfo {
 fn total_memory_bytes() -> Option<u64> {
     #[cfg(target_os = "macos")]
     {
-        let output = std::process::Command::new("sysctl")
+        let output = crate::process::command("sysctl")
             .args(["-n", "hw.memsize"])
             .output()
             .ok()?;
