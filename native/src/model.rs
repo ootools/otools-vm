@@ -549,6 +549,13 @@ pub struct EngineInfo {
     /// `None` 表示尚未探测到。前端据此在跑 TCG 软件模拟时提示开启硬件加速。
     #[serde(default)]
     pub accelerator: Option<String>,
+    /// 该后端能跑哪种客户机架构（`arm64` / `x86_64`）。
+    ///
+    /// 创建向导要据此决定默认值并禁用跑不了的选项。之前前端把默认写死成
+    /// `arm64`，在 Windows（QEMU x86_64）上建出来的机器 `supports()` 直接
+    /// 为假，界面上就显示「不可用」——用户以为是功能坏了。
+    #[serde(default)]
+    pub arch: String,
     pub caps: EngineCaps,
 }
 

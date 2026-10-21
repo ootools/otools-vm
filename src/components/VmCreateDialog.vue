@@ -40,7 +40,7 @@ const form = reactive<{
 }>({
   name: '',
   os: 'linux',
-  arch: 'arm64',
+  arch: 'x86_64',
   cpus: 4,
   memoryMb: 4096,
   diskSizeGb: 40,
@@ -83,10 +83,29 @@ const rosettaHint = computed(() => {
 const maxCpus = computed(() => Math.max(2, host.value?.recommendedCpus ?? 4));
 const maxMemory = computed(() => Math.max(2048, host.value?.recommendedMemoryMb ?? 8192));
 
+/**
+ * 当前引擎能跑哪种客户机架构。
+ *
+ * 以前把默认写死成 `arm64`：在 Windows（QEMU 是 x86_64）上建出来的机器
+ * 一进列表就显示「不可用」——因为 `supports()` 要求架构与引擎一致。
+ * 用户完全看不出是自己选错了架构，只会以为功能坏了。
+ */
+const engineArch = computed(() => {
+  const arch = vmStore.state.engine?.arch;
+  if (arch) {
+    return arch;
+  }
+  // 引擎还没探测出来时，按宿主架构猜一个（Apple Silicon = arm64）。
+  return host.value?.arch === 'arm64' ? 'arm64' : 'x86_64';
+});
+
+/** 该架构能不能在当前引擎上跑。跑不了就别让用户选，否则白建一台「不可用」的机器。 */
+const archSupported = (arch: string): boolean => arch === engineArch.value;
+
 const reset = (): void => {
   form.name = '';
   form.os = 'linux';
-  form.arch = 'arm64';
+  form.arch = engineArch.value;
   form.cpus = Math.min(4, maxCpus.value);
   form.memoryMb = Math.min(4096, maxMemory.value);
   form.diskSizeGb = 40;
@@ -128,7 +147,7 @@ const pickInstaller = async (): Promise<void> => {
     }
   } catch {
     // 连宿主对话框都拿不到（例如纯浏览器直开）：提示改用粘贴。
-    ElMessage.info(t('vm.action.manualPathPlaceholder'));
+    ElMessage.warning({ message: t('vm.action.pickUnavailable'), duration: 5000 });
   }
 };
 
@@ -153,7 +172,7 @@ const pickStorageDir = async (): Promise<void> => {
       form.storageDir = picked;
     }
   } catch {
-    ElMessage.info(t('vm.action.manualPathPlaceholder'));
+    ElMessage.warning({ message: t('vm.action.pickUnavailable'), duration: 5000 });
   }
 };
 
@@ -201,7 +220,7 @@ const pickDriverIso = async (): Promise<void> => {
       form.driverIso = picked;
     }
   } catch {
-    ElMessage.info(t('vm.action.manualPathPlaceholder'));
+    ElMessage.warning({ message: t('vm.action.pickUnavailable'), duration: 5000 });
   }
 };
 
@@ -290,10 +309,20 @@ const submit = async (): Promise<void> => {
 
       <el-form-item :label="t('vm.create.arch')">
         <el-radio-group v-model="form.arch">
-          <el-radio-button value="arm64">arm64</el-radio-button>
-          <el-radio-button value="x86_64">x86_64</el-radio-button>
+          <el-radio-button
+            v-for="option in ['arm64', 'x86_64']"
+            :key="option"
+            :value="option"
+            :disabled="!archSupported(option)"
+          >
+            {{ option }}
+          </el-radio-button>
         </el-radio-group>
         <p class="vm-form-hint">{{ t('vm.create.archHint') }}</p>
+        <!-- 当前引擎只能跑一种架构时说明原因，避免用户以为另一个选项是坏的 -->
+        <p v-if="engineArch" class="vm-form-hint">
+          {{ t('vm.create.archFixed', { arch: engineArch }) }}
+        </p>
       </el-form-item>
 
       <div class="vm-form-grid">
@@ -321,10 +350,16 @@ const submit = async (): Promise<void> => {
             {{ t('vm.action.reset') }}
           </el-button>
         </div>
+        <!--
+          常驻提示「可以直接粘绝对路径」。这是**兜底出口**：某些宿主环境里
+          `otools.dialog` 不会被注入（插件跑在受限 webview 里时），此时点按钮
+          无法弹面板，用户唯一能做的是自己填路径。把这条写在输入框下面，
+          比弹一次错误提示更可靠 —— 弹窗一闪就没了，用户还在找按钮。
+        -->
+        <p class="vm-form-hint">{{ t('vm.create.pathManualHint') }}</p>
         <p v-if="spaceHint" class="vm-form-hint" :class="{ 'vm-form-warn': freeSpaceGb !== null && freeSpaceGb < form.diskSizeGb }">
           {{ spaceHint }}
         </p>
-        <p v-else class="vm-form-hint">{{ t('vm.create.storageDirHint') }}</p>
       </el-form-item>
 
       <el-form-item :label="t('vm.create.installer')">

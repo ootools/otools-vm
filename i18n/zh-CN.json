@@ -243,5 +243,8 @@
   "vm.settings.glTitle": "图形加速（宿主端）",
   "vm.settings.glSupported": "可用",
   "vm.settings.glUnsupported": "不可用",
-  "vm.settings.glUnsupportedHint": "当前 QEMU 版本不带 virglrenderer，客户机只能软件渲染。升级到 11.x 及以上可能可用。"
+  "vm.settings.glUnsupportedHint": "当前 QEMU 版本不带 virglrenderer，客户机只能软件渲染。升级到 11.x 及以上可能可用。",
+  "vm.create.archFixed": "当前引擎只能运行 {arch} 客户机，另一项已禁用。",
+  "vm.create.pathManualHint": "也可以直接粘贴绝对路径，例如 C:\\Users\\你\\Documents\\vms",
+  "vm.action.pickUnavailable": "无法打开系统选择面板（当前宿主环境未提供）。请直接在输入框粘贴完整路径。"
 }

@@ -243,5 +243,8 @@
   "vm.settings.glTitle": "グラフィック高速化（ホスト側）",
   "vm.settings.glSupported": "利用可能",
   "vm.settings.glUnsupported": "利用不可",
-  "vm.settings.glUnsupportedHint": "インストールされている QEMU に virglrenderer が含まれていないため、ゲストはソフトウェア描画になります。11.x 以降に更新すると利用できる場合があります。"
+  "vm.settings.glUnsupportedHint": "インストールされている QEMU に virglrenderer が含まれていないため、ゲストはソフトウェア描画になります。11.x 以降に更新すると利用できる場合があります。",
+  "vm.create.archFixed": "現在のエンジンは {arch} ゲストのみ実行できます。もう一方は無効です。",
+  "vm.create.pathManualHint": "絶対パスを直接貼り付けることもできます（例: C:\\Users\\you\\Documents\\vms）",
+  "vm.action.pickUnavailable": "システムの選択ダイアログを開けません（このホスト環境では提供されていません）。入力欄に完全なパスを貼り付けてください。"
 }

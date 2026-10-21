@@ -161,7 +161,30 @@ function main() {
   for (const name of ['dist', 'lib']) {
     const dir = path.join(root, name);
     if (!fs.existsSync(dir)) continue;
+
+    // dist 里只打包 index.html 真正引用的资源。
+    //
+    // 构建用 `--emptyOutDir=false`（为了保留别的产物），于是每改一次前端都会
+    // 多留一套旧哈希文件，而这里又是整目录 walk —— 结果是包体积翻倍、
+    // 里面躺着几份永不加载的死代码。实测踩过一次：6 条目 / 1190KB 变成
+    // 8 条目 / 2384KB，从包大小就能看出来。
+    let referenced = null;
+    if (name === 'dist') {
+      const indexPath = path.join(dir, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        const html = fs.readFileSync(indexPath, 'utf8');
+        const refs = [...html.matchAll(/(?:src|href)="\.\/([^"]+)"/g)].map((match) => match[1]);
+        if (refs.length) {
+          referenced = new Set(refs);
+        }
+      }
+    }
+
     for (const relative of walk(dir)) {
+      // index.html 自身要留；其余只留被引用的。
+      if (referenced && relative !== 'index.html' && !referenced.has(relative.split(path.sep).join('/'))) {
+        continue;
+      }
       entries.push({ name: `${name}/${relative}`, data: fs.readFileSync(path.join(dir, relative)) });
     }
   }

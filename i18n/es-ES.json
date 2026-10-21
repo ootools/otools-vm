@@ -243,5 +243,8 @@
   "vm.settings.glTitle": "Aceleración gráfica (lado anfitrión)",
   "vm.settings.glSupported": "Disponible",
   "vm.settings.glUnsupported": "No disponible",
-  "vm.settings.glUnsupportedHint": "El QEMU instalado no incluye virglrenderer, así que los invitados usan renderizado por software. Actualizar a 11.x o superior puede habilitarlo."
+  "vm.settings.glUnsupportedHint": "El QEMU instalado no incluye virglrenderer, así que los invitados usan renderizado por software. Actualizar a 11.x o superior puede habilitarlo.",
+  "vm.create.archFixed": "El motor actual solo puede ejecutar invitados {arch}, la otra opción está deshabilitada.",
+  "vm.create.pathManualHint": "También puede pegar una ruta absoluta, p. ej. C:\\Users\\you\\Documents\\vms",
+  "vm.action.pickUnavailable": "No se puede abrir el selector del sistema (este entorno de host no lo proporciona). Pegue la ruta completa en el campo."
 }

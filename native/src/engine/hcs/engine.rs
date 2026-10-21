@@ -120,6 +120,12 @@ impl Engine for HcsEngine {
             // 这个字段在 VZ 的语义里是「进程有没有虚拟化权限」。
             // HCS 的对应概念就是「有没有提权」，直接映射过去，前端不必区分引擎。
             host_entitled: available,
+            // HCS 的客户机架构跟随宿主。
+            arch: if cfg!(target_arch = "aarch64") {
+                "arm64".to_string()
+            } else {
+                "x86_64".to_string()
+            },
             accelerator: if available {
                 Some("hyperv".to_string())
             } else {

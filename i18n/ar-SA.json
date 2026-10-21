@@ -243,5 +243,8 @@
   "vm.settings.glTitle": "تسريع الرسومات (جانب المضيف)",
   "vm.settings.glSupported": "متاح",
   "vm.settings.glUnsupported": "غير متاح",
-  "vm.settings.glUnsupportedHint": "لا يتضمن QEMU المثبت مكتبة virglrenderer، لذا تستخدم الأجهزة الضيفة العرض البرمجي. قد يتيح الترقية إلى 11.x أو أحدث ذلك."
+  "vm.settings.glUnsupportedHint": "لا يتضمن QEMU المثبت مكتبة virglrenderer، لذا تستخدم الأجهزة الضيفة العرض البرمجي. قد يتيح الترقية إلى 11.x أو أحدث ذلك.",
+  "vm.create.archFixed": "المحرك الحالي يدعم أجهزة {arch} فقط، لذا الخيار الآخر معطّل.",
+  "vm.create.pathManualHint": "يمكنك أيضًا لصق مسار مطلق، مثل C:\\Users\\you\\Documents\\vms",
+  "vm.action.pickUnavailable": "تعذر فتح منتقي النظام (لا توفره بيئة المضيف هذه). الصق المسار الكامل في الحقل."
 }

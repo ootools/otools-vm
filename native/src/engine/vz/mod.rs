@@ -417,6 +417,8 @@ impl Engine for VzEngine {
             version: self.version.clone(),
             host_entitled: probe_host_entitlement(),
             accelerator: None,
+            // VZ 只跑 arm64 客户机（与 Apple Silicon 宿主同架构）。
+            arch: "arm64".to_string(),
             caps: EngineCaps {
                 native_view: true,
                 shared_dirs: true,

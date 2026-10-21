@@ -243,5 +243,8 @@
   "vm.settings.glTitle": "Graphics acceleration (host side)",
   "vm.settings.glSupported": "Available",
   "vm.settings.glUnsupported": "Unavailable",
-  "vm.settings.glUnsupportedHint": "The installed QEMU lacks virglrenderer, so guests fall back to software rendering. Upgrading to 11.x or newer may enable it."
+  "vm.settings.glUnsupportedHint": "The installed QEMU lacks virglrenderer, so guests fall back to software rendering. Upgrading to 11.x or newer may enable it.",
+  "vm.create.archFixed": "The current engine can only run {arch} guests, so the other option is disabled.",
+  "vm.create.pathManualHint": "You can also paste an absolute path, e.g. C:\\Users\\you\\Documents\\vms",
+  "vm.action.pickUnavailable": "Cannot open the system picker (not provided by this host environment). Please paste the full path into the field instead."
 }

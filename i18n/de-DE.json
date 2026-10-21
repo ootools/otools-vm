@@ -243,5 +243,8 @@
   "vm.settings.glTitle": "Grafikbeschleunigung (Hostseite)",
   "vm.settings.glSupported": "Verfügbar",
   "vm.settings.glUnsupported": "Nicht verfügbar",
-  "vm.settings.glUnsupportedHint": "Das installierte QEMU enthält kein virglrenderer, Gäste rendern per Software. Ein Upgrade auf 11.x oder neuer kann dies ermöglichen."
+  "vm.settings.glUnsupportedHint": "Das installierte QEMU enthält kein virglrenderer, Gäste rendern per Software. Ein Upgrade auf 11.x oder neuer kann dies ermöglichen.",
+  "vm.create.archFixed": "Die aktuelle Engine kann nur {arch}-Gäste ausführen, die andere Option ist deaktiviert.",
+  "vm.create.pathManualHint": "Sie können auch einen absoluten Pfad einfügen, z. B. C:\\Users\\you\\Documents\\vms",
+  "vm.action.pickUnavailable": "Der Systemauswahldialog kann nicht geöffnet werden (von dieser Host-Umgebung nicht bereitgestellt). Bitte fügen Sie den vollständigen Pfad in das Feld ein."
 }

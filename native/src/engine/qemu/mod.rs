@@ -711,6 +711,7 @@ impl Engine for QemuEngine {
                 // QEMU 走子进程，不需要 macOS 虚拟化权限。
                 host_entitled: true,
                 accelerator: None,
+                arch: self.arch.clone(),
                 caps: EngineCaps::unsupported(),
             };
         }
@@ -722,6 +723,7 @@ impl Engine for QemuEngine {
             version: self.version.clone(),
             host_entitled: true,
             accelerator: self.active_accel.lock().ok().and_then(|guard| guard.clone()),
+            arch: self.arch.clone(),
             caps: EngineCaps {
                 // Windows 上靠窗口重定父把 QEMU 的 SDL 窗口嵌进面板（见 embed）。
                 // 其它平台仍走 QEMU 自己的窗口，前端会据此退回非内嵌形态。

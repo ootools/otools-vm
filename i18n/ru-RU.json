@@ -243,5 +243,8 @@
   "vm.settings.glTitle": "Ускорение графики (сторона хоста)",
   "vm.settings.glSupported": "Доступно",
   "vm.settings.glUnsupported": "Недоступно",
-  "vm.settings.glUnsupportedHint": "В установленном QEMU нет virglrenderer, поэтому гости используют программный рендеринг. Обновление до 11.x или новее может это включить."
+  "vm.settings.glUnsupportedHint": "В установленном QEMU нет virglrenderer, поэтому гости используют программный рендеринг. Обновление до 11.x или новее может это включить.",
+  "vm.create.archFixed": "Текущий движок поддерживает только гостей {arch}, второй вариант отключён.",
+  "vm.create.pathManualHint": "Можно также вставить абсолютный путь, например C:\\Users\\you\\Documents\\vms",
+  "vm.action.pickUnavailable": "Не удаётся открыть системный диалог выбора (эта среда хоста его не предоставляет). Вставьте полный путь в поле."
 }

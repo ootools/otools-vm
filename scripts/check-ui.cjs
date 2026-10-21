@@ -13,6 +13,7 @@
  * 1. 没有 QEMU 时欢迎页出现「一键获取」卡片，并调用 `vm_qemu_plan`；
  * 2. 点「一键获取」调用 `vm_qemu_install`，随后进入轮询；
  * 3. 创建对话框出现「存储位置」，选目录走宿主 dialog，提交时 `storageDir` 真的传下去；
+ *    默认架构必须跟随引擎（写死 arm64 会建出「不可用」的机器）；
  * 4. 选完目录会问 `vm_disk_space` 并显示可用空间；
  * 5. 遗留的孤儿虚拟机能列出、能一键清理，且**不误走 `vm_stop`**；
  * 6. 没有展开入口时（欢迎页）不给出「收起侧栏」把手；
@@ -67,6 +68,10 @@ function engineInfo(available, kind) {
     version: available ? (hcs ? '10.0.26100' : 'QEMU 10.0.0') : '',
     hostEntitled: true,
     accelerator: available ? 'whpx' : null,
+    // 引擎能跑的客户机架构。创建向导据此设默认值并禁用另一项——
+    // 桩里必须是 x86_64（Windows 上真实的 QEMU 架构），否则测不到
+    // 「默认架构」这条逻辑。
+    arch: 'x86_64',
     caps: {
       nativeView: false, sharedDirs: !hcs, sharedDirsGuests: hcs ? [] : ['linux','windows'],
       clipboard: false, autoResize: false, audio: !hcs, snapshots: false,
@@ -253,6 +258,26 @@ function fakeVm(id, name) {
   check('对话框出现「存储位置」', dialogText.includes('存储位置'), dialogText.slice(0, 200));
   check('打开对话框时问了默认目录空间',
     (await calls()).some((c) => c.command === 'vm_disk_space' && !c.payload?.path));
+
+  // 回归：架构默认值必须跟随引擎，不能写死 arm64。
+  // 写死在 Windows（QEMU x86_64）上会建出一台「不可用」的机器，而用户完全
+  // 看不出是自己选错了架构。
+  const archLabels = await page.locator('.el-dialog .el-radio-button').evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      text: node.innerText.trim(),
+      checked: node.classList.contains('is-active'),
+      disabled: node.classList.contains('is-disabled'),
+    })));
+  const x86 = archLabels.find((item) => item.text === 'x86_64');
+  const arm = archLabels.find((item) => item.text === 'arm64');
+  check('默认架构跟随引擎（x86_64 被选中）', x86?.checked === true, JSON.stringify(archLabels));
+  check('跑不了的架构被禁用（arm64）', arm?.disabled === true, JSON.stringify(arm));
+  check('说明为何只有一种架构可选', dialogText.includes('只能运行 x86_64'), dialogText.slice(0, 400));
+
+  // 常驻提示：粘贴绝对路径是宿主导航不可用时的**唯一**出口，
+  // 必须一直看得见，不能只在失败后弹一次就消失。
+  check('存储位置下方常驻「可以粘贴路径」提示',
+    /粘贴.*(绝对)?路径/.test(dialogText), dialogText.slice(0, 500));
 
   // 点「选择目录」→ 走宿主 dialog
   const pickButton = page.locator('.el-dialog').getByRole('button', { name: '选择目录' });

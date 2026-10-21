@@ -124,6 +124,8 @@ impl Engine for NoopEngine {
             version: String::new(),
             host_entitled: false,
             accelerator: None,
+            // 占位引擎没有能力跑任何架构；空串让前端无法选中。
+            arch: String::new(),
             caps: EngineCaps::unsupported(),
         }
     }

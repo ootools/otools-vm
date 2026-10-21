@@ -138,6 +138,9 @@ export const openHostPath = (path: string): void => {
 /** 宿主没有提供对话框能力时的标记：调用方据此降级为手动输入。 */
 export const HOST_DIALOG_UNAVAILABLE = 'HOST_DIALOG_UNAVAILABLE';
 
+/** 宿主与 native 都拿不到选择面板时的标记（此时只能手动填路径）。 */
+export const PICK_UNAVAILABLE = 'PICK_UNAVAILABLE';
+
 /**
  * 弹出宿主提供的文件 / 目录选择框，返回绝对路径；取消返回 null。
  *
@@ -170,10 +173,18 @@ export async function openHostDialog(options: {
 }
 
 /**
- * 选择文件 / 目录：优先 native（macOS 用 AppKit 面板，与 VZ 窗口模型一致），
- * native 明确表示「本平台没有」时自动改走宿主对话框。
+ * 选择文件 / 目录。
  *
- * 返回 null 表示用户取消或拿不到选择能力，调用方据此保持原值。
+ * 顺序上**优先用宿主对话框**：`otools.dialog.open` 是宿主提供的系统原生面板，
+ * 各平台都有；而 native 的 AppKit 面板只在 macOS 上存在。
+ *
+ * 早期实现反过来（先问 native、失败再回落），在 Windows 上每次都会先付一次
+ * 必然失败的跨进程调用，更糟的是**宿主对话框若也拿不到，错误会被调用方
+ * 那句「也可以直接粘贴绝对路径」吞掉**——用户看到的就是「点了没反应、
+ * 只弹一句莫名其妙的话」。
+ *
+ * 所以这里：宿主对话框可用就直接用；只有在它不可用时才去问 native；
+ * 两边都不行时抛出**带原因**的错误，让界面能明确告诉用户该怎么绕过。
  */
 export async function pickPath(options: {
   directory?: boolean;
@@ -181,32 +192,43 @@ export async function pickPath(options: {
   /** 仅文件选择时生效。 */
   filters?: { name: string; extensions: string[] }[];
 }): Promise<string | null> {
+  const hostError = hostDialogError();
+
+  if (!hostError) {
+    const picked = await openHostDialog({
+      directory: options.directory,
+      title: options.title,
+      filters: options.filters,
+    });
+    if (picked !== null) {
+      return picked;
+    }
+    // 返回 null 有两种可能：用户点了取消，或者宿主面板本身没弹出来。
+    // 后者不该静默——否则用户会觉得按钮坏了。用 native 侧兜底再试一次。
+  }
+
   const command = options.directory ? 'vm_pick_folder' : 'vm_pick_file';
   try {
     const result = await invokeNative<{ path: string | null }>(command, {
       title: options.title,
     });
-    // **必须区分「键不存在」与「键为 null」**：
-    // - `path: null` 是 native 明确告诉我们用户点了取消；
-    // - 连 `path` 键都没有，说明这个响应不是选择面板给的（老版本 native、
-    //   或走了别的分支），不能当成取消——那会表现为「点了按钮什么都不发生」。
-    if (!result || typeof result !== 'object' || !('path' in result)) {
-      return openHostDialog({
-        directory: options.directory,
-        title: options.title,
-        filters: options.filters,
-      });
+    if (result && typeof result === 'object' && 'path' in result) {
+      return result.path ?? null;
     }
-    return result.path ?? null;
   } catch {
-    // native 在本平台没有面板（PICK_DIALOG_UNAVAILABLE），或面板本身创建失败
-    // ——一律改走宿主对话框。
-    return openHostDialog({
-      directory: options.directory,
-      title: options.title,
-      filters: options.filters,
-    });
+    // native 在本平台没有面板（PICK_DIALOG_UNAVAILABLE），继续往下报错。
   }
+
+  throw new Error(hostError ?? PICK_UNAVAILABLE);
+}
+
+/** 宿主没有对话框能力时返回原因，可用时返回 null。 */
+function hostDialogError(): string | null {
+  const api = readApi();
+  if (!api?.dialog?.open) {
+    return HOST_DIALOG_UNAVAILABLE;
+  }
+  return null;
 }
 
 export const openHostExternal = (url: string): void => {

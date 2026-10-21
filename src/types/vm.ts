@@ -249,6 +249,13 @@ export interface EngineInfo {
   hostEntitled: boolean;
   /** 当前实际生效的加速器（whpx/hvf/kvm/tcg）；未探测到为 null。 */
   accelerator: string | null;
+  /**
+   * 该后端能跑哪种客户机架构（`arm64` / `x86_64`）。
+   *
+   * 创建向导据此设默认值并禁用跑不了的选项：写死默认架构会让建出来的机器
+   * 一进列表就显示「不可用」（`supports()` 要求架构匹配）。
+   */
+  arch: string;
   caps: EngineCaps;
 }
 
