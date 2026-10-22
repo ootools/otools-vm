@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
-import { pickPath } from '@/sdk/runtime';
+import { pickPathWithFeedback } from '@/services/path-pick';
 import { VmApi } from '@/services/vm-api';
 import { vmStore } from '@/state/vm-store';
 import type { GuestOs, NetworkMode, PortForward, SharedDir, VmCreateInput } from '@/types/vm';
@@ -137,17 +137,12 @@ watch(visible, (open) => {
 const IMAGE_EXTENSIONS = ['iso', 'img', 'raw', 'qcow2', 'vmdk', 'vdi', 'vhdx'];
 
 const pickInstaller = async (): Promise<void> => {
-  try {
-    const picked = await pickPath({
-      title: t('vm.create.installer'),
-      filters: [{ name: t('vm.action.imageFilter'), extensions: IMAGE_EXTENSIONS }],
-    });
-    if (picked) {
-      form.installerPath = picked;
-    }
-  } catch {
-    // 连宿主对话框都拿不到（例如纯浏览器直开）：提示改用粘贴。
-    ElMessage.warning({ message: t('vm.action.pickUnavailable'), duration: 5000 });
+  const picked = await pickPathWithFeedback({
+    title: t('vm.create.installer'),
+    filters: [{ name: t('vm.action.imageFilter'), extensions: IMAGE_EXTENSIONS }],
+  });
+  if (picked) {
+    form.installerPath = picked;
   }
 };
 
@@ -163,16 +158,12 @@ const isQemu = computed(() => vmStore.state.engine?.kind === 'qemu');
  * 只搬磁盘：`vm.json`/NVRAM/日志必须留在默认目录，否则虚拟机列表扫不到它。
  */
 const pickStorageDir = async (): Promise<void> => {
-  try {
-    const picked = await pickPath({
-      title: t('vm.create.storageDir'),
-      directory: true,
-    });
-    if (picked) {
-      form.storageDir = picked;
-    }
-  } catch {
-    ElMessage.warning({ message: t('vm.action.pickUnavailable'), duration: 5000 });
+  const picked = await pickPathWithFeedback({
+    title: t('vm.create.storageDir'),
+    directory: true,
+  });
+  if (picked) {
+    form.storageDir = picked;
   }
 };
 
@@ -211,16 +202,12 @@ const spaceHint = computed(() => {
 });
 
 const pickDriverIso = async (): Promise<void> => {
-  try {
-    const picked = await pickPath({
-      title: t('vm.create.driverIso'),
-      filters: [{ name: t('vm.action.imageFilter'), extensions: IMAGE_EXTENSIONS }],
-    });
-    if (picked) {
-      form.driverIso = picked;
-    }
-  } catch {
-    ElMessage.warning({ message: t('vm.action.pickUnavailable'), duration: 5000 });
+  const picked = await pickPathWithFeedback({
+    title: t('vm.create.driverIso'),
+    filters: [{ name: t('vm.action.imageFilter'), extensions: IMAGE_EXTENSIONS }],
+  });
+  if (picked) {
+    form.driverIso = picked;
   }
 };
 

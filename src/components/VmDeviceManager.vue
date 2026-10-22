@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { ArrowUp, ArrowDown, Close, Plus } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
-import { pickPath } from '@/sdk/runtime';
+import { pickPathWithFeedback } from '@/services/path-pick';
 
 /** 设备管理：启动顺序、U 盘介质。网络相关（端口转发）在 VmNetworkManager。 */
 export interface DeviceConfig {
@@ -62,16 +62,12 @@ const addBoot = (): void => {
 // ---------------- U 盘介质 ----------------
 
 const pickUsbMedia = async (): Promise<void> => {
-  try {
-    const picked = await pickPath({
-      title: t('vm.device.usbMedia'),
-      filters: [{ name: t('vm.action.imageFilter'), extensions: ['img', 'raw', 'iso'] }],
-    });
-    if (picked) {
-      patch({ usbMedia: picked });
-    }
-  } catch {
-    ElMessage.info(t('vm.action.manualPathPlaceholder'));
+  const picked = await pickPathWithFeedback({
+    title: t('vm.device.usbMedia'),
+    filters: [{ name: t('vm.action.imageFilter'), extensions: ['img', 'raw', 'iso'] }],
+  });
+  if (picked) {
+    patch({ usbMedia: picked });
   }
 };
 

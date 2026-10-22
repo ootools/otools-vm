@@ -12,7 +12,7 @@
  * 关键断言：
  * 1. 没有 QEMU 时欢迎页出现「一键获取」卡片，并调用 `vm_qemu_plan`；
  * 2. 点「一键获取」调用 `vm_qemu_install`，随后进入轮询；
- * 3. 创建对话框出现「存储位置」，选目录走宿主 dialog，提交时 `storageDir` 真的传下去；
+ * 3. 创建对话框出现「存储位置」，选目录走 native 面板，提交时 `storageDir` 真的传下去；
  *    默认架构必须跟随引擎（写死 arm64 会建出「不可用」的机器）；
  * 4. 选完目录会问 `vm_disk_space` 并显示可用空间；
  * 5. 遗留的孤儿虚拟机能列出、能一键清理，且**不误走 `vm_stop`**；
@@ -91,6 +91,29 @@ window.otools = {
       return window.__dialogPath;
     }
   },
+  // web 树回落用的宿主浏览接口：按路径返回根列表 + 当前目录条目。
+  browseHostDir: async (path) => {
+    window.__calls.push({ command: 'browseHostDir', payload: { path: path || null } });
+    const atRoot = !path;
+    const base = path || 'C:/Users/test';
+    return {
+      currentPath: base,
+      parentPath: atRoot ? null : 'C:/Users',
+      fileName: null,
+      roots: [
+        { path: 'C:/Users/test', name: '主目录' },
+        { path: 'D:/', name: 'D:' },
+      ],
+      entries: atRoot
+        ? [
+            { name: 'VMs', path: 'C:/Users/test/VMs', kind: 'directory', size: 0, mime: 'inode/directory', lastModified: null },
+            { name: 'notes.txt', path: 'C:/Users/test/notes.txt', kind: 'file', size: 123, mime: 'text/plain', lastModified: null },
+          ]
+        : [
+            { name: 'storage', path: base + '/storage', kind: 'directory', size: 0, mime: 'inode/directory', lastModified: null },
+          ],
+    };
+  },
   invokeNativePlugin: async (uuid, command, payload) => {
     window.__calls.push({ command: command, payload: payload });
     switch (command) {
@@ -158,10 +181,17 @@ window.otools = {
       case 'vm_network_interfaces':
         return [];
       case 'vm_pick_folder':
+        // 模拟 Windows 真机：插件自己的 Win32 面板给出确定路径，不再回落宿主。
+        // __nativeUnavailable 时则模拟「本平台没有面板」，逼出 web 树回落。
+        if (window.__nativeUnavailable) {
+          throw new Error('PICK_DIALOG_UNAVAILABLE');
+        }
+        return { path: 'D:/VMs/storage' };
       case 'vm_pick_file':
-        // 忠实模拟 Windows 真机：非 macOS 一律返回 PICK_DIALOG_UNAVAILABLE，
-        // 迫使前端改走宿主 dialog。若这里返回 {}，就等于把真机行为测没了。
-        throw new Error('PICK_DIALOG_UNAVAILABLE');
+        if (window.__nativeUnavailable) {
+          throw new Error('PICK_DIALOG_UNAVAILABLE');
+        }
+        return { path: 'D:/iso/guest.iso' };
       case 'vm_engine_reprobe':
         return engineInfo(true);
       // 孤儿清理：默认没有孤儿，测试里用 addInitScript 预置 window.__orphans
@@ -279,12 +309,13 @@ function fakeVm(id, name) {
   check('存储位置下方常驻「可以粘贴路径」提示',
     /粘贴.*(绝对)?路径/.test(dialogText), dialogText.slice(0, 500));
 
-  // 点「选择目录」→ 走宿主 dialog
+  // 点「选择目录」→ 走插件自己的 native 面板（Windows Win32 / macOS AppKit），
+  // 不再依赖会把异常吞成 null 的宿主 dialog。
   const pickButton = page.locator('.el-dialog').getByRole('button', { name: '选择目录' });
   await pickButton.click();
   await page.waitForTimeout(700);
   const pickedCalls = await calls();
-  check('选目录走了宿主 dialog 接口', pickedCalls.some((c) => c.command === '__dialog' && c.payload?.directory === true));
+  check('选目录走了 native 选择面板', pickedCalls.some((c) => c.command === 'vm_pick_folder'));
   check('选完后又问了这个目录的空间',
     pickedCalls.some((c) => c.command === 'vm_disk_space' && c.payload?.path === 'D:/VMs/storage'));
 
@@ -463,6 +494,46 @@ function fakeVm(id, name) {
     const stopIdx = afterSwitch.findIndex((c) => c.command === 'vm_stop' && c.payload?.id === 'vm-hcs');
     const prefIdx = afterSwitch.findIndex((c) => c.command === 'vm_set_engine_preference');
     check('关机发生在切引擎之前', stopIdx >= 0 && prefIdx > stopIdx, `stop=${stopIdx} pref=${prefIdx}`);
+  }
+
+  console.log('\n[10] Web 环境（无 Tauri / native 不可用）：选择走宿主 DOM 树');
+  // 模拟「纯浏览器 / 远程访问」：没有 Tauri 运行时，native 也明确「本平台无面板」。
+  // 此时选择目录应弹出页面内 DOM 树（数据来自宿主 browseHostDir），而非原生框。
+  await page.addInitScript(`window.__nativeUnavailable = true;`);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(800);
+  await page.getByRole('button', { name: '新建虚拟机' }).first().click();
+  await page.waitForTimeout(600);
+
+  const webPickButton = page.locator('.el-dialog').getByRole('button', { name: '选择目录' });
+  await webPickButton.click();
+  await page.waitForTimeout(700);
+  check('Web 环境弹出宿主 DOM 树', (await page.locator('[data-host-tree]').count()) > 0);
+  check('DOM 树首次加载调了 browseHostDir', (await calls()).some((c) => c.command === 'browseHostDir'));
+
+  const vmsRow = page.locator('[data-host-tree-entry][data-path="C:/Users/test/VMs"]');
+  check('树里出现 VMs 目录', (await vmsRow.count()) > 0);
+  if (await vmsRow.count()) {
+    await vmsRow.first().click();
+    await page.waitForTimeout(500);
+    const navCalls = (await calls()).filter((c) => c.command === 'browseHostDir');
+    check('点目录触发了浏览导航', navCalls.some((c) => c.payload?.path === 'C:/Users/test/VMs'),
+      JSON.stringify(navCalls.map((c) => c.payload)));
+  }
+
+  const webConfirm = page.locator('[data-host-tree-confirm]');
+  check('出现确认按钮', (await webConfirm.count()) > 0);
+  if (await webConfirm.count()) {
+    await webConfirm.first().click();
+    await page.waitForTimeout(700);
+    const afterTree = await calls();
+    check('选完宿主目录后问了空间',
+      afterTree.some((c) => c.command === 'vm_disk_space' && c.payload?.path === 'C:/Users/test/VMs'),
+      JSON.stringify(afterTree.filter((c) => c.command === 'vm_disk_space')));
+    const webInput = await page.locator('.el-dialog input').evaluateAll((nodes) =>
+      nodes.map((node) => node.value).filter(Boolean));
+    check('存储位置输入框填入了宿主路径', webInput.includes('C:/Users/test/VMs'), JSON.stringify(webInput));
+    check('DOM 树已关闭', (await page.locator('[data-host-tree]').count()) === 0);
   }
 
   await browser.close();

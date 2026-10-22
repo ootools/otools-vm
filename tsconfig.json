@@ -16,7 +16,15 @@
     "types": ["vite/client", "node"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "otools-plugin-sdk/dialog": [
+        "../otools/vendor/otools-plugin-sdk/src/dialog.ts",
+        "vendor/otools-plugin-sdk/src/dialog.ts"
+      ],
+      "otools-plugin-sdk/host-file-tree": [
+        "../otools/vendor/otools-plugin-sdk/src/host-file-tree.ts",
+        "vendor/otools-plugin-sdk/src/host-file-tree.ts"
+      ]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "vite.config.ts"]

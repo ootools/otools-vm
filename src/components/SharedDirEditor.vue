@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { Plus, FolderOpened, Close } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { t } from '@/i18n';
-import { pickPath } from '@/sdk/runtime';
+import { pickPathWithFeedback } from '@/services/path-pick';
 import { vmStore } from '@/state/vm-store';
 import type { SharedDir } from '@/types/vm';
 
@@ -82,19 +82,14 @@ const pushPath = (hostPath: string): boolean => {
 };
 
 const addDirectory = async (): Promise<void> => {
-  try {
-    const picked = await pickPath({
-      directory: true,
-      title: t('vm.action.addSharedDir'),
-    });
-    if (picked) {
-      pushPath(picked);
-    }
-    // null 表示用户取消，保持现状即可。
-  } catch {
-    // 宿主对话框也拿不到时，切到手动输入而不是只弹一个错误。
-    manualMode.value = true;
+  const picked = await pickPathWithFeedback({
+    directory: true,
+    title: t('vm.action.addSharedDir'),
+  });
+  if (picked) {
+    pushPath(picked);
   }
+  // null 表示用户取消或面板打不开（原因已由 pickPathWithFeedback 提示），保持现状。
 };
 
 const commitManual = (): void => {

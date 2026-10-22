@@ -1,11 +1,29 @@
 /**
- * 插件 ↔ native 桥接。
+ * 插件 ↔ native 桥接，以及宿主能力（对话框等）的入口。
  *
- * 独立仓库没有主仓的 `otools-plugin-sdk`，这里实现等价的最小集合：
- * 1. 宿主注入的 `window.otools.invokeNativePlugin` / `invokeNative`（会自己解包 `{ok,data}`）；
- * 2. 独立 APP / 开发环境下的 `__TAURI_INTERNALS__.invoke`（需要自己解包）；
- * 3. 浏览器直开时抛出可读错误，而不是静默返回 undefined。
+ * ## 为什么对话框走 `otools-plugin-sdk`
+ *
+ * 宿主注入的 `window.otools.dialog` 内部是「先试 Tauri 命令、失败回落 webview_fs」，
+ * **两条路的异常都被 `try/catch` 吞成 `null`**（见主仓
+ * `src/platform/runtime/otools/embedded-runtime.js` 的 `dialogApi`）。
+ * 于是「底层桥不可用」和「用户点了取消」在前端拿到的是同一个 `null`，
+ * 表现为「点了没反应」——这是最难查的一类问题。
+ *
+ * 仓库里通用的 `otools-plugin-sdk` 是同一套语义的**唯一受维护实现**，
+ * 各插件（disk / aigv / git …）都通过它的 vite alias 把 `@tauri-apps/*`
+ * 指到 shim 上。这里沿用同一条路，而不是自造一套调用方式。
+ *
+ * ## 但面板「一定能弹出来」不能只靠 SDK
+ *
+ * SDK 的 `open()` 在 shim 失败时同样返回 `null`。所以真正的保证放在
+ * **插件自己的 native**：Windows 直接调 Win32 面板、macOS 用 AppKit，
+ * 完全不经过任何宿主桥。这里先问 native，native 明确说「本平台没有面板」
+ * 时才退回 SDK。这个顺序与「优先宿主」相反，理由就是上面那条：
+ * native 的失败是**可区分**的（要么给出路径、要么给出错误、要么明确不可用）。
  */
+
+import { pickDirectory, pickFile } from 'otools-plugin-sdk/dialog';
+import { pickFromHostTree } from 'otools-plugin-sdk/host-file-tree';
 
 declare const __OTOOLS_PLUGIN_UUID__: string | undefined;
 
@@ -15,15 +33,6 @@ type OtoolsApi = {
   getPluginUuid?: () => string;
   shellOpenPath?: (path: string) => unknown;
   shellOpenExternal?: (url: string) => unknown;
-  dialog?: {
-    open?: (options?: {
-      directory?: boolean;
-      multiple?: boolean;
-      title?: string;
-      defaultPath?: string;
-      filters?: { name: string; extensions: string[] }[];
-    }) => Promise<string | string[] | null>;
-  };
 };
 
 type RuntimeWindow = Window & {
@@ -135,100 +144,113 @@ export const openHostPath = (path: string): void => {
   }
 };
 
-/** 宿主没有提供对话框能力时的标记：调用方据此降级为手动输入。 */
-export const HOST_DIALOG_UNAVAILABLE = 'HOST_DIALOG_UNAVAILABLE';
+/** 本平台 native 侧没有系统面板时的标记（仅 Linux）。 */
+export const PICK_DIALOG_UNAVAILABLE = 'PICK_DIALOG_UNAVAILABLE';
 
 /** 宿主与 native 都拿不到选择面板时的标记（此时只能手动填路径）。 */
 export const PICK_UNAVAILABLE = 'PICK_UNAVAILABLE';
 
-/**
- * 弹出宿主提供的文件 / 目录选择框，返回绝对路径；取消返回 null。
- *
- * **为什么要走宿主而不是插件自己实现**：宿主的 `otools.dialog.open()` 底层是
- * Tauri 的 `plugin:dialog|open`，Windows / macOS / Linux 全平台都有原生面板，
- * 而且拿不到插件命令时会自动回退到 webview_fs 通道，网页形态同样可用。
- * 插件 native 侧只有 macOS 用 AppKit 实现了面板，其它平台本就不该重复造。
- */
-export async function openHostDialog(options: {
-  directory?: boolean;
-  title?: string;
-  filters?: { name: string; extensions: string[] }[];
-}): Promise<string | null> {
-  const api = readApi();
-  const dialog = api?.dialog;
-  if (!dialog?.open) {
-    // 脱离宿主直接打开页面时没有对话框能力，交给调用方降级。
-    throw new Error(HOST_DIALOG_UNAVAILABLE);
-  }
-  const picked = await dialog.open({
-    directory: options.directory === true,
-    title: options.title,
-    filters: options.filters,
-  });
-  // multiple 没开时正常返回 string；数组取第一个，null 表示用户取消。
-  if (Array.isArray(picked)) {
-    return picked[0] ?? null;
-  }
-  return typeof picked === 'string' && picked.trim() ? picked : null;
-}
-
-/**
- * 选择文件 / 目录。
- *
- * 顺序上**优先用宿主对话框**：`otools.dialog.open` 是宿主提供的系统原生面板，
- * 各平台都有；而 native 的 AppKit 面板只在 macOS 上存在。
- *
- * 早期实现反过来（先问 native、失败再回落），在 Windows 上每次都会先付一次
- * 必然失败的跨进程调用，更糟的是**宿主对话框若也拿不到，错误会被调用方
- * 那句「也可以直接粘贴绝对路径」吞掉**——用户看到的就是「点了没反应、
- * 只弹一句莫名其妙的话」。
- *
- * 所以这里：宿主对话框可用就直接用；只有在它不可用时才去问 native；
- * 两边都不行时抛出**带原因**的错误，让界面能明确告诉用户该怎么绕过。
- */
-export async function pickPath(options: {
+export type PickPathOptions = {
   directory?: boolean;
   title: string;
   /** 仅文件选择时生效。 */
   filters?: { name: string; extensions: string[] }[];
-}): Promise<string | null> {
-  const hostError = hostDialogError();
+};
 
-  if (!hostError) {
-    const picked = await openHostDialog({
-      directory: options.directory,
-      title: options.title,
-      filters: options.filters,
-    });
-    if (picked !== null) {
-      return picked;
-    }
-    // 返回 null 有两种可能：用户点了取消，或者宿主面板本身没弹出来。
-    // 后者不该静默——否则用户会觉得按钮坏了。用 native 侧兜底再试一次。
+/** 选择结果的来源：native 选的是用户本机路径，web 树选的是宿主侧路径。 */
+export type PickSource = 'native-local' | 'host-tree';
+
+export type PickPathResult = {
+  path: string | null;
+  source: PickSource;
+};
+
+/**
+ * 选择文件 / 目录，返回路径与来源；用户取消时 `path` 为 `null`。
+ *
+ * 顺序：**先问插件自己的 native**（Windows Win32 / macOS AppKit），
+ * 只有 native 明确回答「本平台没有面板」时才退回上层。
+ *
+ * 反过来（宿主优先）之所以不行：宿主那条路失败时只会给出 `null`，
+ * 与「用户取消」无法区分，最终表现就是按钮点了没反应。native 这条路
+ * 的每种结局都是可区分的，所以它必须先跑。
+ */
+export async function pickPathWithSource(options: PickPathOptions): Promise<PickPathResult> {
+  const nativeResult = await pickViaNative(options);
+  if (nativeResult.kind === 'picked') {
+    return { path: nativeResult.path, source: 'native-local' };
+  }
+  if (nativeResult.kind === 'cancelled') {
+    return { path: null, source: 'native-local' };
   }
 
-  const command = options.directory ? 'vm_pick_folder' : 'vm_pick_file';
+  // native 在本平台没有面板（Linux / 纯 web / 远程访问）。
+  // 桌面 webview 仍走宿主原生对话框；纯浏览器或远程访问时原生框弹不出来，
+  // 改用宿主文件系统 DOM 树（选出来的是宿主侧路径）。
+  if (isTauriRuntime()) {
+    const sdkOptions = { title: options.title, filters: options.filters };
+    const picked = options.directory
+      ? await pickDirectory(sdkOptions)
+      : await pickFile(sdkOptions);
+    const path = typeof picked === 'string' && picked.trim() ? picked.trim() : null;
+    return { path, source: 'native-local' };
+  }
+
   try {
-    const result = await invokeNative<{ path: string | null }>(command, {
-      title: options.title,
-    });
-    if (result && typeof result === 'object' && 'path' in result) {
-      return result.path ?? null;
+    const result = await pickFromHostTree({ ...options, directory: Boolean(options.directory) });
+    if (result.kind === 'picked' && result.paths[0]) {
+      return { path: result.paths[0], source: 'host-tree' };
     }
+    return { path: null, source: 'host-tree' };
   } catch {
-    // native 在本平台没有面板（PICK_DIALOG_UNAVAILABLE），继续往下报错。
+    return { path: null, source: 'host-tree' };
   }
-
-  throw new Error(hostError ?? PICK_UNAVAILABLE);
 }
 
-/** 宿主没有对话框能力时返回原因，可用时返回 null。 */
-function hostDialogError(): string | null {
-  const api = readApi();
-  if (!api?.dialog?.open) {
-    return HOST_DIALOG_UNAVAILABLE;
+/**
+ * 选择文件 / 目录，返回绝对路径；用户取消返回 `null`。
+ * 等价于 `pickPathWithSource(...).path`，给不需要来源信息的调用点用。
+ */
+export async function pickPath(options: PickPathOptions): Promise<string | null> {
+  return (await pickPathWithSource(options)).path;
+}
+
+type NativePickOutcome =
+  | { kind: 'picked'; path: string }
+  | { kind: 'cancelled' }
+  | { kind: 'unavailable' };
+
+/**
+ * 调 native 面板，并把「选到 / 取消 / 本平台没有」三种结局分开。
+ *
+ * 关键点：**不能把异常统一当成「不可用」**。真正不可用只有
+ * `PICK_DIALOG_UNAVAILABLE` 这一个标记；其它异常是真失败，必须往上抛，
+ * 否则又回到「静默吞掉」的老问题。
+ */
+async function pickViaNative(options: PickPathOptions): Promise<NativePickOutcome> {
+  const command = options.directory ? 'vm_pick_folder' : 'vm_pick_file';
+  const payload: Record<string, unknown> = { title: options.title };
+  if (!options.directory && options.filters?.length) {
+    payload.filterName = options.filters[0].name;
+    payload.extensions = options.filters[0].extensions;
   }
-  return null;
+
+  let result: unknown;
+  try {
+    result = await invokeNative<{ path: string | null }>(command, payload);
+  } catch (error) {
+    const message = typeof error === 'string' ? error : (error as Error)?.message ?? '';
+    if (message.includes(PICK_DIALOG_UNAVAILABLE)) {
+      return { kind: 'unavailable' };
+    }
+    throw error;
+  }
+
+  const path = result && typeof result === 'object' ? (result as { path?: unknown }).path : null;
+  if (typeof path === 'string' && path.trim()) {
+    return { kind: 'picked', path: path.trim() };
+  }
+  return { kind: 'cancelled' };
 }
 
 export const openHostExternal = (url: string): void => {

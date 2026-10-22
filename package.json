@@ -1,6 +1,6 @@
 {
   "name": "otools-vm",
-  "version": "0.5.2",
+  "version": "0.5.4",
   "private": true,
   "type": "module",
   "description": "OTools VM — 基于 Apple Virtualization.framework 的桌面虚拟机插件，支持 Windows / Linux 图形虚拟机、共享目录、剪贴板与窗口自适应分辨率。",
@@ -17,7 +17,10 @@
     "release": "node scripts/pack-plugin.mjs && node scripts/verify-plugin.mjs",
     "smoke": "python3 scripts/smoke-native.py",
     "probe:start": "bash scripts/probe-start.sh",
-    "check:ui": "node scripts/check-ui.cjs"
+    "check:ui": "node scripts/check-ui.cjs",
+    "check:web": "node scripts/check-web-facade.mjs && node scripts/check-rpc-protocol.mjs && node scripts/check-injected-script.mjs",
+    "install:local": "node scripts/install-plugin.mjs",
+    "check:all": "npm run build:check && npm run check:web && npm run check:ui"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",

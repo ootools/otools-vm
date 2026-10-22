@@ -11,6 +11,10 @@
 pub mod engine;
 pub mod model;
 pub mod paths;
+// 插件自己的系统文件/目录选择面板。宿主 dialogApi 把底层异常吞成 null，
+// 用户看到的「点了没反应」无法与「点了取消」区分，因此这条兜底必须真实可用。
+#[cfg(target_os = "windows")]
+pub mod pick;
 pub mod process;
 pub mod settings;
 pub mod store;
@@ -547,34 +551,92 @@ fn cmd_pick_file(payload: &Value) -> Result<Value, String> {
         .get("title")
         .and_then(|value| value.as_str())
         .unwrap_or("选择安装镜像");
-    pick_path(title, false)
+    // 前端可以把过滤扩展名传下来（`iso`、`img`…），没传时用镜像常见组合。
+    let filter_name = payload
+        .get("filterName")
+        .and_then(|value| value.as_str())
+        .unwrap_or("镜像文件");
+    let extensions: Vec<String> = payload
+        .get("extensions")
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str())
+                .map(|item| item.to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+    pick_path_with_file_filter(title, filter_name, &extensions)
 }
 
 fn pick_path(title: &str, directory: bool) -> Result<Value, String> {
-    #[cfg(target_os = "macos")]
-    {
-        let picked = if directory {
-            engine::vz::dialog::pick_directory(title)?
-        } else {
-            engine::vz::dialog::pick_file(title)?
-        };
-        Ok(json!({ "path": picked }))
+    if directory {
+        return pick_directory_path(title);
     }
-    // 非 macOS 宿主没有本机原生面板——**但要回到前端去走宿主提供的
-    // `otools.dialog.open()`**（Tauri 的 tauri-plugin-dialog，网页/App 都能用），
-    // 而不是在这里自己造一个。这里返回错误即是给前端的信号：
-    // 收到该错误就切换到宿主对话框，两边都不再依赖「用户手动粘贴路径」。
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (title, directory);
-        Err(PICK_DIALOG_UNAVAILABLE.to_string())
-    }
+    pick_path_with_file_filter(title, "镜像文件", &[])
 }
 
-/// 非 macOS 宿主上 `vm_pick_file` / `vm_pick_folder` 的统一错误标记。
+#[cfg(target_os = "macos")]
+fn pick_directory_path(title: &str) -> Result<Value, String> {
+    let picked = engine::vz::dialog::pick_directory(title)?;
+    Ok(json!({ "path": picked }))
+}
+
+#[cfg(target_os = "macos")]
+fn pick_path_with_file_filter(
+    title: &str,
+    _filter_name: &str,
+    _extensions: &[String],
+) -> Result<Value, String> {
+    let picked = engine::vz::dialog::pick_file(title)?;
+    Ok(json!({ "path": picked }))
+}
+
+// Windows：插件自己的 Win32 面板。**不再回落到宿主**——宿主 `dialogApi`
+// 会把两条内部路径的异常都吞成 `null`，用户无法区分「取消」和「面板没弹出来」，
+// 这种失败模式没法在界面上说清楚。这里直接给出确定结果。
+#[cfg(target_os = "windows")]
+fn pick_directory_path(title: &str) -> Result<Value, String> {
+    let picked = crate::pick::pick_directory(title)?;
+    Ok(json!({ "path": picked }))
+}
+
+#[cfg(target_os = "windows")]
+fn pick_path_with_file_filter(
+    title: &str,
+    filter_name: &str,
+    extensions: &[String],
+) -> Result<Value, String> {
+    let refs: Vec<&str> = extensions.iter().map(|item| item.as_str()).collect();
+    let picked = crate::pick::pick_file(title, filter_name, &refs)?;
+    Ok(json!({ "path": picked }))
+}
+
+// 其它平台（Linux）：仍然没有自绘面板，返回标记让前端走宿主对话框。
+// 这里保留原来的信号语义，前端 `pickPath` 会据此改道。
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn pick_directory_path(_title: &str) -> Result<Value, String> {
+    Err(PICK_DIALOG_UNAVAILABLE.to_string())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn pick_path_with_file_filter(
+    _title: &str,
+    _filter_name: &str,
+    _extensions: &[String],
+) -> Result<Value, String> {
+    Err(PICK_DIALOG_UNAVAILABLE.to_string())
+}
+
+/// 本平台 native 侧确实没有面板时的标记。
 ///
-/// 前端用它精确判断「不是真失败，是该走宿主对话框了」，避免用模糊的
-/// 字符串匹配或把真正的错误也一并吞掉。
+/// 前端用精确字符串比较识别它，再改走宿主对话框；其它错误一律视为真失败。
+/// 现在只有 Linux 会返回它——macOS 有 AppKit，Windows 有 Win32。
+///
+/// macOS / Windows 都有自己的面板，这个常量在那里没有使用者；不关掉警告
+/// 会让人误以为「面板被删了」。
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 const PICK_DIALOG_UNAVAILABLE: &str = "PICK_DIALOG_UNAVAILABLE";
 
 fn cmd_clone(payload: &Value) -> Result<Value, String> {

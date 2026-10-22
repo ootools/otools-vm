@@ -7,6 +7,8 @@ dist-pack/
 
 # Rust native
 native/target/
+# 误建的嵌套构建目录（cargo 在 native/ 下再次执行时的产物）
+native/native/
 
 # 原生产物：由发布流水线构建，不入库（与主仓 plugins/.gitignore 一致）
 *.dll
